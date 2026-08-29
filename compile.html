@@ -85,80 +85,83 @@
   </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
-<script>
-(function(){
-'use strict';
-var $ = function(id){ return document.getElementById(id); };
-var preview = $('preview'), meta = $('meta'), go = $('go'), log = $('log'), fill = $('fill');
-var img = null;
+<script type="module">
+// MindAR の配布物は ES モジュール。<script src> では window.MINDAR が生えないので
+// import で読む。CDN が駄目なら、ローカルサーバー経由で node_modules から読む。
+const $ = (id) => document.getElementById(id);
+const preview = $('preview'), meta = $('meta'), go = $('go'), log = $('log'), fill = $('fill');
+let img = null, Compiler = null;
 
 function say(msg, isErr){
   log.textContent = msg;
   log.className = isErr ? 'err' : '';
 }
 
+const SOURCES = [
+  'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js',
+  './node_modules/mind-ar/dist/mindar-image.prod.js'
+];
+(async () => {
+  for (const src of SOURCES){
+    try {
+      const m = await import(src);
+      Compiler = m.Compiler || (window.MINDAR && window.MINDAR.IMAGE && window.MINDAR.IMAGE.Compiler);
+      if (Compiler){ console.log('MindAR:', src); return; }
+    } catch(e){ console.warn('読めません:', src, e); }
+  }
+  say('MindAR を読み込めませんでした。ネットワークを確認して再読み込みしてください。', true);
+})();
+
 function useImage(src, label){
-  var im = new Image();
+  const im = new Image();
   im.crossOrigin = 'anonymous';
-  im.onload = function(){
+  im.onload = () => {
     img = im;
     preview.src = src;
     meta.innerHTML = label + '<br>' + im.naturalWidth + ' × ' + im.naturalHeight + ' px';
     go.disabled = false;
     say('準備できました');
   };
-  im.onerror = function(){
+  im.onerror = () => {
     meta.textContent = '読み込めませんでした';
     say('画像を読み込めません。「別の画像を選ぶ」から指定してください。', true);
   };
   im.src = src;
 }
-
-// 既定はリポジトリ内のカード画像
 useImage('%E3%83%AB%E3%82%A4%E3%83%BC%E3%82%BA.jpg', 'ルイーズ.jpg');
 
-$('pick').addEventListener('click', function(){ $('file').click(); });
-$('file').addEventListener('change', function(e){
-  var f = e.target.files && e.target.files[0];
+$('pick').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
   if (f) useImage(URL.createObjectURL(f), f.name);
 });
 
-go.addEventListener('click', function(){
+go.addEventListener('click', async () => {
   if (!img) return;
-  if (!window.MINDAR || !window.MINDAR.IMAGE || !window.MINDAR.IMAGE.Compiler){
-    say('MindAR の読み込みに失敗しました。ネットワークを確認して再読み込みしてください。', true);
-    return;
-  }
+  if (!Compiler){ say('MindAR がまだ読めていません。再読み込みしてください。', true); return; }
   go.disabled = true;
   say('特徴点を抽出しています。カード1枚で数十秒かかります…');
-
-  var compiler = new window.MINDAR.IMAGE.Compiler();
-  var t0 = performance.now();
-
-  compiler.compileImageTargets([img], function(p){
-    fill.style.width = p.toFixed(1) + '%';
-    say('学習中 ' + p.toFixed(0) + '%');
-  }).then(function(){
-    return compiler.exportData();
-  }).then(function(buffer){
-    var sec = ((performance.now()-t0)/1000).toFixed(1);
-    var blob = new Blob([buffer], {type:'application/octet-stream'});
-    var a = document.createElement('a');
+  const t0 = performance.now();
+  try {
+    const compiler = new Compiler();
+    await compiler.compileImageTargets([img], (p) => {
+      fill.style.width = p.toFixed(1) + '%';
+      say('学習中 ' + p.toFixed(0) + '%');
+    });
+    const buffer = await compiler.exportData();
+    const blob = new Blob([buffer], {type:'application/octet-stream'});
+    const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'targets.mind';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    document.body.appendChild(a); a.click(); a.remove();
     fill.style.width = '100%';
-    say('完了（' + sec + '秒、' + Math.round(blob.size/1024) + ' KB）。\n' +
-        'targets.mind をこのフォルダに置いてください。');
-  }).catch(function(err){
+    say('完了（' + ((performance.now()-t0)/1000).toFixed(1) + '秒、' +
+        Math.round(blob.size/1024) + ' KB）。 targets.mind をこのフォルダに置いてください。');
+  } catch(err){
     go.disabled = false;
-    say('学習に失敗しました: ' + (err && err.message ? err.message : err), true);
-  });
+    say('学習に失敗しました: ' + ((err && err.message) || err), true);
+  }
 });
-})();
 </script>
 </body>
 </html>
