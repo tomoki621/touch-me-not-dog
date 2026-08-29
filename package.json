@@ -9,5 +9,12 @@
     "@napi-rs/canvas": "^0.1.0",
     "jimp": "0.22.12",
     "mind-ar": "1.2.5"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "three": "0.149.0"
+  },
+  "scripts": {
+    "build": "esbuild src/app.js --bundle --format=iife --target=es2018 --outfile=app.js --minify --alias:fs=./src/empty.js --alias:util=./src/empty.js --alias:path=./src/empty.js --alias:crypto=./src/empty.js"
   }
 }
