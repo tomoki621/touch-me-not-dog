@@ -196,11 +196,16 @@ const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
 const SWORD_LEN  = 0.95;                          // キャラ背丈に対する剣の全長
 const SHIELD_LEN = 0.62;                          // 同じく盾の高さ
 
-const swordPivot  = new THREE.Group();            // 握りを支点に振る
+const swordPivot  = new THREE.Group();            // 手のボーンが見つかればそちらへ移す
 const shieldPivot = new THREE.Group();
 swordPivot.position.copy(HAND_R);
 shieldPivot.position.copy(HAND_L);
 chara.add(swordPivot, shieldPivot);
+
+// リグありモデルのボーン。見つかれば腕を直接振る。見つからなければ全身の演技で通す。
+const bones = {};
+const rest  = {};                                 // 素の姿勢。ここからの差分で動かす。
+let rigged = false;
 
 const loader = new GLTFLoader();
 let loaded = 0;
@@ -231,16 +236,35 @@ function load(url, onDone){
   });
 }
 
-load('models/chara.glb', (root) => {
+load('models/rouise.glb', (root) => {
   fit(root, 1.9, 0, 0);            // 足を原点に
   chara.add(root);
+
+  // ボーンを名前で拾い、素の姿勢を控える。以降はここからの差分だけを回す。
+  root.traverse(o => {
+    if (o.isBone){
+      bones[o.name] = o;
+      rest[o.name] = o.quaternion.clone();
+    }
+  });
+  rigged = !!(bones.RightArm && bones.LeftArm);
+  console.log('[rig] ボーン ' + Object.keys(bones).length + '本, 使用可: ' + rigged);
+
+  // 武器は手のボーンの子にする。これで腕の動きに完全に追従する。
+  if (bones.RightHand){ bones.RightHand.add(swordPivot);  swordPivot.position.set(0,0,0); }
+  if (bones.LeftHand){  bones.LeftHand.add(shieldPivot);  shieldPivot.position.set(0,0,0); }
+
+  // ボーンは親のスケールを引き継ぐので、武器側で打ち消して実寸を決める
+  const ws = new THREE.Vector3();
+  if (bones.RightHand){ bones.RightHand.getWorldScale(ws); swordPivot.scale.setScalar(SWORD_LEN/ws.x); }
+  if (bones.LeftHand){  bones.LeftHand.getWorldScale(ws);  shieldPivot.scale.setScalar(SHIELD_LEN/ws.x); }
 });
 load('models/sword.glb', (root) => {
-  fit(root, SWORD_LEN, 0.22, 0);   // 握りのあたりを原点に
+  fit(root, 1.0, 0.22, 0);         // 握りのあたりを原点に。実寸は swordPivot 側で決める。
   swordPivot.add(root);
 });
 load('models/shield.glb', (root) => {
-  fit(root, SHIELD_LEN, 0.5, 0);   // 中心を原点に
+  fit(root, 1.0, 0.5, 0);          // 中心を原点に。実寸は shieldPivot 側で決める。
   root.rotation.y = Math.PI/2;     // 面を体の外へ向ける
   shieldPivot.add(root);
 });
@@ -526,6 +550,24 @@ const _camLocal = new THREE.Vector3(), _handW = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
+// ボーンを素の姿勢からの差分で回す。軸はモデル自身の向き（X=右 Y=上 Z=前）で
+// 指定し、ボーンの親空間へ移してから掛ける。こうすると骨の命名規約や
+// 各ボーンのローカル軸の取り方に左右されない。
+const _axis = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _pq = new THREE.Quaternion(), _cq = new THREE.Quaternion();
+function boneSet(name, rots){
+  const b = bones[name];
+  if (!b) return;
+  b.quaternion.copy(rest[name]);
+  if (!rots) return;
+  b.parent.getWorldQuaternion(_pq).invert();
+  for (const r of rots){
+    if (!r[3]) continue;
+    _axis.set(r[0], r[1], r[2]).applyQuaternion(_cq).applyQuaternion(_pq).normalize();
+    b.quaternion.premultiply(_q.setFromAxisAngle(_axis, r[3]));
+  }
+}
+
 function tick(){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
@@ -573,18 +615,31 @@ function tick(){
   autoYaw += dY * (1 - Math.exp(-5*dt));
   chara.rotation.y = autoYaw + charaYaw;
 
-  // --- 剣: 握りを支点に振りかぶって斬り下ろす
-  swordPivot.rotation.z = -0.18 + Math.sin(st.t*1.7)*0.05 - swingArc*2.3;
-  swordPivot.rotation.x = swingArc*0.55;
-
-  // --- 盾: 構えると手首を返して正面へ立てる
-  shieldPivot.rotation.z =  0.15 + st.guard*0.55;
-  shieldPivot.rotation.y = -st.guard*0.9;
-  shieldPivot.position.set(
-    HAND_L.x - st.guard*0.10,
-    HAND_L.y + st.guard*0.34,     // 手首の可動ぶんだけ持ち上げる
-    HAND_L.z + st.guard*0.22
-  );
+  if (rigged){
+    // --- ボーンを直接回す。武器は手のボーンの子なので勝手に付いてくる。
+    chara.getWorldQuaternion(_cq);
+    const u = swingU;
+    const wind = u < 0.30 ? u/0.30 : 1 - (u-0.30)/0.70;          // 振りかぶり
+    const chop = u < 0.30 ? 0 : Math.sin((u-0.30)/0.70*Math.PI); // 斬り下ろし
+    const on = st.swing > 0.001 ? 1 : 0;
+    boneSet('RightArm',     [[1,0,0, on*(-1.40*wind + 2.40*chop)]]);
+    boneSet('RightForeArm', [[1,0,0, on*(-0.70*wind + 1.30*chop)]]);
+    boneSet('LeftArm',      [[1,0,0, st.guard*1.15], [0,1,0, -st.guard*0.55]]);
+    boneSet('LeftForeArm',  [[1,0,0, st.guard*0.95]]);
+    boneSet('Head',         [[1,0,0, -roarU*0.45]]);
+    boneSet('Spine02',      [[1,0,0, -roarU*0.15 + swingArc*0.12]]);
+  } else {
+    // --- リグが無いときは握りを支点に武器だけ回す
+    swordPivot.rotation.z = -0.18 + Math.sin(st.t*1.7)*0.05 - swingArc*2.3;
+    swordPivot.rotation.x = swingArc*0.55;
+    shieldPivot.rotation.z =  0.15 + st.guard*0.55;
+    shieldPivot.rotation.y = -st.guard*0.9;
+    shieldPivot.position.set(
+      HAND_L.x - st.guard*0.10,
+      HAND_L.y + st.guard*0.34,
+      HAND_L.z + st.guard*0.22
+    );
+  }
 
   // --- 体: 腕が動かないぶん、全身で演技する
   const breathe = Math.sin(st.t*2.2)*0.012;
