@@ -87,6 +87,13 @@
   @keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
   #note{font-size:12.5px;line-height:1.8;color:var(--bad);min-height:1.5em;max-width:28em;margin:0}
   @media (prefers-reduced-motion: reduce){ #tapme{animation:none;opacity:1} }
+
+  /* どこで止まっているかを推測しないための表示。原因が分かったら消す。 */
+  #dbg{position:fixed;left:0;bottom:0;z-index:7;margin:0;padding:8px 12px;
+    padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.65;
+    color:#fff;background:#000000aa;white-space:pre;pointer-events:auto;cursor:pointer}
+  #dbg.hidden{opacity:.25}
 </style>
 </head>
 <body>
@@ -111,6 +118,8 @@
     <svg viewBox="0 0 24 24"><path d="M20.5 3.5 11 13"/><path d="m7.6 12.6 3.8 3.8"/><path d="M9.5 14.5 4.6 19.4"/><path d="m3.4 18.6 2 2"/></svg>
   </button>
 </div>
+
+<pre id="dbg">起動待ち</pre>
 
 <div id="gate">
   <h1>触らせてくれない</h1>
@@ -137,6 +146,23 @@ const $ = (id) => document.getElementById(id);
 const gate = $('gate'), note = $('note'), tapme = $('tapme');
 const acts = $('acts'), scan = $('scan'), touch = $('touch'), occ = $('occ');
 
+// ---------------------------------------------------------------- 状態表示
+// どこで止まっているかを推測しない。タップで薄くできる。
+const dbgEl = $('dbg');
+const dbg = { started:false, frames:0, models:{}, err:'', hits:0 };
+dbgEl.addEventListener('click', () => dbgEl.classList.toggle('hidden'));
+function renderDbg(){
+  const v = mindar && mindar.video;
+  const m = Object.keys(dbg.models).map(k => '  ' + k + ': ' + dbg.models[k]).join('\n');
+  dbgEl.textContent =
+    'MindAR : ' + (dbg.started ? '起動' : '未起動') +
+    '\n映像   : ' + (v && v.videoWidth ? v.videoWidth + 'x' + v.videoHeight : '無し') +
+    '\n描画   : ' + dbg.frames + ' フレーム' +
+    '\n検出   : ' + (found ? '発見' : '待機') + '  (通算 ' + dbg.hits + ' 回)' +
+    '\nモデル :\n' + (m || '  読み込み中') +
+    (dbg.err ? '\nエラー : ' + dbg.err : '');
+}
+
 // ---------------------------------------------------------------- AR
 // カードが位置・向き・実寸のすべてを教えてくれる。ジャイロで水平を推測し、
 // 画角を決め打ちし、手で配置していた妥協が、ここで全部要らなくなる。
@@ -144,6 +170,9 @@ const mindar = new MindARThree({
   container: $('ar'),
   imageTargetSrc: 'targets.mind',
   uiLoading: 'no', uiScanning: 'no', uiError: 'no',
+  maxTrack: 1,
+  warmupTolerance: 0,      // 1フレーム一致すれば即「発見」。既定の5は渋すぎる。
+  missTolerance: 30,       // 見失っても粘る。多少ブレても消えない。
   filterMinCF: 0.0001,     // 小さいほど追従が滑らか
   filterBeta: 0.001
 });
@@ -224,15 +253,23 @@ function fit(root, targetH, anchorY, spin){
 }
 
 function load(url, onDone){
+  const name = url.split('/').pop();
+  dbg.models[name] = '取得中';
+  renderDbg();
   loader.load(url, (g) => {
     g.scene.traverse(o => {
       if (o.isMesh){ o.castShadow = true; o.frustumCulled = false; }
     });
-    onDone(g.scene);
-    if (++loaded === READY) console.log('[model] 3体そろいました');
+    try {
+      onDone(g.scene);
+      dbg.models[name] = 'OK';
+    } catch(e){
+      dbg.models[name] = '配置失敗 ' + (e.message || e);
+    }
+    loaded++; renderDbg();
   }, undefined, (err) => {
-    console.warn('[model] 読み込めません:', url, err);
-    if (++loaded === READY) console.log('[model] 一部欠けたまま起動します');
+    dbg.models[name] = '失敗 ' + ((err && (err.message || err.type)) || '');
+    loaded++; renderDbg();
   });
 }
 
@@ -292,7 +329,7 @@ stand.add(spawnRing);
 
 let found = false, spawnT = 0;
 anchor.onTargetFound = () => {
-  found = true; spawnT = 0;
+  found = true; spawnT = 0; dbg.hits++;
   scan.classList.add('gone');
   acts.classList.add('on');
   loadHands();                    // 見つかってから読む。走査中の負荷を上げない。
@@ -531,10 +568,12 @@ function boot(){
     if (!r.ok) throw new Error('NO_TARGET');
     return mindar.start();
   }).then(() => {
+    dbg.started = true; renderDbg();
     gate.classList.add('gone');
     setTimeout(() => { gate.style.display = 'none'; }, 520);
     renderer.setAnimationLoop(tick);
   }).catch(err => {
+    dbg.err = (err && err.message) || String(err); renderDbg();
     tapme.style.display = 'none';
     note.textContent = (err && err.message === 'NO_TARGET')
       ? 'カードの学習データ（targets.mind）がまだ置かれていません。compile.html で作って、このフォルダに入れてください。'
@@ -571,6 +610,8 @@ function boneSet(name, rots){
 function tick(){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
+  dbg.frames++;
+  if (dbg.frames % 20 === 0) renderDbg();
 
   if (found && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
