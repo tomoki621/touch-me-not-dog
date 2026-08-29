@@ -15,6 +15,6 @@
     "three": "0.149.0"
   },
   "scripts": {
-    "build": "esbuild src/app.js --bundle --format=iife --target=es2018 --outfile=app.js --minify --alias:fs=./src/empty.js --alias:util=./src/empty.js --alias:path=./src/empty.js --alias:crypto=./src/empty.js"
+    "build": "node build.mjs"
   }
 }
