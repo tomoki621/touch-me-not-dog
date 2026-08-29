@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>カードを学習させる</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap">
+<style>
+  :root{
+    --bg:#e9e4ee; --fg:#241c33; --dim:#6d6280; --accent:#2a5bd7; --bad:#c4523a;
+    --card:#fbf9fd; --line:#241c3322;
+    --display:"Dela Gothic One","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#191424; --fg:#efe9f8; --dim:#9a8fb0; --accent:#5b86ef; --bad:#e8705a;
+      --card:#221b30; --line:#efe9f826;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#191424; --fg:#efe9f8; --dim:#9a8fb0; --accent:#5b86ef; --bad:#e8705a;
+    --card:#221b30; --line:#efe9f826;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:32px 20px}
+  main{width:100%;max-width:560px;display:flex;flex-direction:column;gap:22px}
+  h1{font-family:var(--display);font-weight:400;font-size:clamp(24px,6vw,34px);
+    margin:0;letter-spacing:-.01em;line-height:1.3}
+  p{margin:0;font-size:14px;line-height:1.9;color:var(--dim)}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:20px;display:flex;flex-direction:column;gap:16px}
+  .row{display:flex;gap:16px;align-items:center}
+  #preview{width:96px;height:auto;border-radius:8px;border:1px solid var(--line);
+    display:block;flex:0 0 auto;background:#0002}
+  .meta{font-size:12.5px;line-height:1.8;color:var(--dim);font-variant-numeric:tabular-nums}
+
+  button{-webkit-appearance:none;appearance:none;border:none;border-radius:999px;
+    background:var(--accent);color:#fff;font:inherit;font-size:15px;font-weight:700;
+    padding:14px 30px;cursor:pointer;align-self:flex-start}
+  button:disabled{opacity:.45;cursor:default}
+  button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:400}
+
+  #bar{height:6px;border-radius:3px;background:#8881;overflow:hidden}
+  #fill{height:100%;width:0%;background:var(--accent);transition:width .2s}
+  #log{font-size:12.5px;line-height:1.8;color:var(--dim);white-space:pre-wrap;
+    font-variant-numeric:tabular-nums;min-height:1.6em}
+  #log.err{color:var(--bad)}
+  ol{margin:0;padding-left:1.3em;font-size:13.5px;line-height:2;color:var(--dim)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;
+    background:#8881;padding:.15em .45em;border-radius:5px}
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>カードを学習させる</h1>
+    <p>ルイーズのカード画像から、AR がカードを見分けるためのデータ
+       <code>targets.mind</code> を作ります。ここで完結するので、画像をどこにも送りません。</p>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <img id="preview" alt="学習させるカード">
+      <div class="meta" id="meta">画像を読み込んでいます…</div>
+    </div>
+    <div class="row">
+      <button id="go" disabled>学習をはじめる</button>
+      <button class="ghost" id="pick">別の画像を選ぶ</button>
+      <input type="file" id="file" accept="image/*" hidden>
+    </div>
+    <div id="bar"><div id="fill"></div></div>
+    <div id="log">待機中</div>
+  </div>
+
+  <div class="panel">
+    <p style="color:var(--fg);font-size:13.5px">このあと</p>
+    <ol>
+      <li>ダウンロードされた <code>targets.mind</code> をこのフォルダに置く</li>
+      <li>私に「置いた」と伝える。コミットして公開します</li>
+      <li>スマホでアプリを開き、カードにかざす</li>
+    </ol>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var preview = $('preview'), meta = $('meta'), go = $('go'), log = $('log'), fill = $('fill');
+var img = null;
+
+function say(msg, isErr){
+  log.textContent = msg;
+  log.className = isErr ? 'err' : '';
+}
+
+function useImage(src, label){
+  var im = new Image();
+  im.crossOrigin = 'anonymous';
+  im.onload = function(){
+    img = im;
+    preview.src = src;
+    meta.innerHTML = label + '<br>' + im.naturalWidth + ' × ' + im.naturalHeight + ' px';
+    go.disabled = false;
+    say('準備できました');
+  };
+  im.onerror = function(){
+    meta.textContent = '読み込めませんでした';
+    say('画像を読み込めません。「別の画像を選ぶ」から指定してください。', true);
+  };
+  im.src = src;
+}
+
+// 既定はリポジトリ内のカード画像
+useImage('%E3%83%AB%E3%82%A4%E3%83%BC%E3%82%BA.jpg', 'ルイーズ.jpg');
+
+$('pick').addEventListener('click', function(){ $('file').click(); });
+$('file').addEventListener('change', function(e){
+  var f = e.target.files && e.target.files[0];
+  if (f) useImage(URL.createObjectURL(f), f.name);
+});
+
+go.addEventListener('click', function(){
+  if (!img) return;
+  if (!window.MINDAR || !window.MINDAR.IMAGE || !window.MINDAR.IMAGE.Compiler){
+    say('MindAR の読み込みに失敗しました。ネットワークを確認して再読み込みしてください。', true);
+    return;
+  }
+  go.disabled = true;
+  say('特徴点を抽出しています。カード1枚で数十秒かかります…');
+
+  var compiler = new window.MINDAR.IMAGE.Compiler();
+  var t0 = performance.now();
+
+  compiler.compileImageTargets([img], function(p){
+    fill.style.width = p.toFixed(1) + '%';
+    say('学習中 ' + p.toFixed(0) + '%');
+  }).then(function(){
+    return compiler.exportData();
+  }).then(function(buffer){
+    var sec = ((performance.now()-t0)/1000).toFixed(1);
+    var blob = new Blob([buffer], {type:'application/octet-stream'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'targets.mind';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    fill.style.width = '100%';
+    say('完了（' + sec + '秒、' + Math.round(blob.size/1024) + ' KB）。\n' +
+        'targets.mind をこのフォルダに置いてください。');
+  }).catch(function(err){
+    go.disabled = false;
+    say('学習に失敗しました: ' + (err && err.message ? err.message : err), true);
+  });
+});
+})();
+</script>
+</body>
+</html>

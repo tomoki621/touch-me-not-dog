@@ -1,3 +1,7 @@
 node_modules/
 .DS_Store
 Thumbs.db
+3Dモデル/
+tmpglb/
+node_modules/
+tex.mjs
