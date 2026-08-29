@@ -51,7 +51,8 @@ anchor.group.add(stand);
 
 const chara = new THREE.Group();      // 立ち位置と向きを持つ入れ物
 stand.add(chara);
-const BASE_SCALE = 1.15;              // カード幅の 1.15 倍を背丈にする
+const BASE_SCALE = 1.15;
+let baseScale = BASE_SCALE;   // 呼吸で毎フレーム掛けると累積するので基準を別に持つ              // カード幅の 1.15 倍を背丈にする
 chara.scale.setScalar(BASE_SCALE);
 
 // 影は実物のカードの上に落ちる。接地はこれで完全に成立する。
@@ -395,7 +396,7 @@ touch.addEventListener('pointerdown', e => {
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
   if (pointers.size === 2){
     pinchDist0 = pinchDistance();
-    pinchScale0 = chara.scale.x;
+    pinchScale0 = baseScale;
     twistPrev = pinchAngle();
   }
 });
@@ -403,7 +404,7 @@ touch.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
   if (pointers.size < 2 || !pinchDist0) return;
-  chara.scale.setScalar(THREE.MathUtils.clamp(pinchScale0 * (pinchDistance()/pinchDist0), 0.3, 4));
+  baseScale = THREE.MathUtils.clamp(pinchScale0 * (pinchDistance()/pinchDist0), 0.3, 4);
   const a = pinchAngle();
   let dA = a - twistPrev;                          // -PI..PI に畳んでから積む
   while (dA >  Math.PI) dA -= Math.PI*2;
@@ -468,10 +469,19 @@ function boneSet(name, rots){
 }
 
 function tick(){
+  dbg.frames++;
+  try { update(); }
+  catch(e){
+    if (!dbg.err) dbg.err = (e.message || e) + ' | ' + ((e.stack || '').split(/\n/)[1] || '').trim();
+  }
+  renderer.render(scene, camera);
+  drawOcclusion();
+  if (dbg.frames % 20 === 0) renderDbg();
+}
+
+function update(){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
-  dbg.frames++;
-  if (dbg.frames % 20 === 0) renderDbg();
 
   if (found && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
@@ -552,7 +562,7 @@ function tick(){
     (1-e)*-0.45 + swingArc*0.07 + roarU*0.05 + (Math.random()-0.5)*st.shakeT*0.03,
     st.guard*0.08 + swingArc*0.10
   );
-  const grow = chara.scale.x;
+  const grow = baseScale;
   chara.scale.set(grow*(1-breathe*0.5), grow*(1+breathe+roarU*0.05), grow*(1-breathe*0.5));
 
   slash.visible = st.swing > 0.02;
@@ -578,6 +588,4 @@ function tick(){
     shock.material.opacity = st.roar*0.7;
   }
 
-  renderer.render(scene, camera);
-  drawOcclusion();          // 3D を描いたあとに手を被せる
 }
