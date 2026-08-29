@@ -6,21 +6,18 @@ const $ = (id) => document.getElementById(id);
 const gate = $('gate'), note = $('note'), tapme = $('tapme');
 const acts = $('acts'), scan = $('scan'), touch = $('touch'), occ = $('occ');
 
-// ---------------------------------------------------------------- 状態表示
-// どこで止まっているかを推測しない。タップで薄くできる。
+// ---------------------------------------------------------------- 不具合の表示
+// 普段は何も出さない。壊れたときだけ、その理由を一行で出す。
 const dbgEl = $('dbg');
 const dbg = { started:false, frames:0, models:{}, err:'', hits:0 };
-dbgEl.addEventListener('click', () => dbgEl.classList.toggle('hidden'));
+dbgEl.addEventListener('click', () => { dbgEl.style.display = 'none'; });
 function renderDbg(){
-  const v = mindar && mindar.video;
-  const m = Object.keys(dbg.models).map(k => '  ' + k + ': ' + dbg.models[k]).join('\n');
-  dbgEl.textContent =
-    'MindAR : ' + (dbg.started ? '起動' : '未起動') +
-    '\n映像   : ' + (v && v.videoWidth ? v.videoWidth + 'x' + v.videoHeight : '無し') +
-    '\n描画   : ' + dbg.frames + ' フレーム' +
-    '\n検出   : ' + (found ? '発見' : '待機') + '  (通算 ' + dbg.hits + ' 回)' +
-    '\nモデル :\n' + (m || '  読み込み中') +
-    (dbg.err ? '\nエラー : ' + dbg.err : '');
+  const broken = Object.keys(dbg.models).filter(k => !/^(OK|取得中)$/.test(dbg.models[k]));
+  const msg = dbg.err ? dbg.err
+            : broken.length ? broken.map(k => k + ': ' + dbg.models[k]).join(' / ')
+            : '';
+  dbgEl.style.display = msg ? 'block' : 'none';
+  if (msg) dbgEl.textContent = msg;
 }
 
 // ---------------------------------------------------------------- AR
@@ -103,11 +100,31 @@ const READY = 3;
 
 // 高さを揃え、指定した基準点が原点に来るように寄せる。
 // anchorY: 0=モデルの底, 1=モデルの天。剣は握りが下寄りなので少し上を掴む。
+// スキン付きメッシュの頂点はバインド行列で既に骨の空間に載っている。
+// そこへメッシュ側のワールド行列を重ねて測ると桁が狂う（このモデルは
+// Armature に 0.01 倍が掛かっていて、100分の1の箱が返っていた）。
+// スキン付きは素の箱、それ以外はワールド行列を掛けた箱を使う。
+const _b3 = new THREE.Box3();
+function modelBox(root){
+  const box = new THREE.Box3().makeEmpty();
+  root.updateWorldMatrix(false, true);
+  root.traverse(o => {
+    if (!o.isMesh || !o.geometry) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    _b3.copy(o.geometry.boundingBox);
+    if (!o.isSkinnedMesh) _b3.applyMatrix4(o.matrixWorld);
+    box.union(_b3);
+  });
+  return box;
+}
+
+// 高さを揃え、指定した基準点が原点に来るように寄せる。
+// anchorY: 0=モデルの底, 1=モデルの天。剣は握りが下寄りなので少し上を掴む。
 function fit(root, targetH, anchorY, spin){
-  const box = new THREE.Box3().setFromObject(root);
+  const box = modelBox(root);
   const size = new THREE.Vector3(), center = new THREE.Vector3();
   box.getSize(size); box.getCenter(center);
-  const k = targetH / (size.y || 1);
+  const k = (isFinite(size.y) && size.y > 1e-6) ? targetH / size.y : 1;
   root.scale.setScalar(k);
   root.position.set(-center.x*k, -(box.min.y + size.y*anchorY)*k, -center.z*k);
   if (spin) root.rotation.y = spin;
