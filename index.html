@@ -106,7 +106,7 @@
 </div>
 
 <div id="setup">
-  <div id="tip">ドラッグで立ち位置、2本指で大きさ</div>
+  <div id="tip">ドラッグで立ち位置、2本指で大きさと向き</div>
   <button id="ok">ここに立たせる</button>
 </div>
 
@@ -154,9 +154,13 @@ var _euler = new THREE.Euler();
 var _q0 = new THREE.Quaternion();
 var _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));  // X軸 -90°
 var FALLBACK_Q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.30, 0, 0, 'YXZ'));
+var _qTarget = new THREE.Quaternion();
 
+// 方位角(alpha)は基準がドリフトし続けるので使わない。使うと像がじわじわ泳ぐ。
+// 重力から一意に決まる前後傾き(beta)と左右傾き(gamma)だけで水平を作る。
+// 引き換えに、左右へパンしてもキャラは画面に対して留まる（世界に固定はされない）。
 function applyDeviceOrientation(q){
-  _euler.set(gyro.beta, gyro.alpha, -gyro.gamma, 'YXZ');
+  _euler.set(gyro.beta, 0, -gyro.gamma, 'YXZ');
   q.setFromEuler(_euler);
   q.multiply(_q1);
   q.multiply(_q0.setFromAxisAngle(_zee, -gyro.screen));
@@ -549,13 +553,21 @@ function placeDefault(){
 
 var pointers = {}, pointerCount = 0;
 var pinchDist0 = 0, pinchScale0 = 1, pinched = false, dragStart = null, dragging = false;
+var twistPrev = 0, charaYaw = 0;   // ひねりで決めたキャラの向き
 var mode = 'setup';
 
-function pinchDistance(){
+function twoPointers(){
   var k = Object.keys(pointers);
-  if (k.length < 2) return 0;
-  var a = pointers[k[0]], b = pointers[k[1]];
-  return Math.hypot(a.x-b.x, a.y-b.y);
+  return k.length < 2 ? null : [pointers[k[0]], pointers[k[1]]];
+}
+function pinchDistance(){
+  var p = twoPointers();
+  return p ? Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y) : 0;
+}
+// 2本指のなす角。ひねりでキャラの向きを変える。
+function pinchAngle(){
+  var p = twoPointers();
+  return p ? Math.atan2(p[1].y-p[0].y, p[1].x-p[0].x) : 0;
 }
 
 cv.addEventListener('pointerdown', function(e){
@@ -563,15 +575,23 @@ cv.addEventListener('pointerdown', function(e){
   pointers[e.pointerId] = {x:e.clientX, y:e.clientY};
   pointerCount++;
   if (pointerCount === 1){ dragStart = {x:e.clientX, y:e.clientY}; dragging = false; pinched = false; }
-  else if (pointerCount === 2){ pinchDist0 = pinchDistance(); pinchScale0 = chara.scale.x; pinched = true; }
+  else if (pointerCount === 2){
+    pinchDist0 = pinchDistance(); pinchScale0 = chara.scale.x;
+    twistPrev = pinchAngle(); pinched = true;
+  }
 });
 
 cv.addEventListener('pointermove', function(e){
   if (!pointers[e.pointerId]) return;
   pointers[e.pointerId] = {x:e.clientX, y:e.clientY};
   if (pointerCount >= 2 && pinchDist0 > 0){
-    var s = pinchScale0 * (pinchDistance()/pinchDist0);
-    chara.scale.setScalar(THREE.MathUtils.clamp(s, 0.3, 4.0));
+    var sc = pinchScale0 * (pinchDistance()/pinchDist0);
+    chara.scale.setScalar(THREE.MathUtils.clamp(sc, 0.3, 4.0));
+    var a = pinchAngle(), dA = a - twistPrev;      // -PI..PI に畳んでから積む
+    while (dA >  Math.PI) dA -= Math.PI*2;
+    while (dA < -Math.PI) dA += Math.PI*2;
+    charaYaw -= dA;
+    twistPrev = a;
     return;
   }
   if (pointerCount === 1 && dragStart && !pinched){
@@ -698,8 +718,13 @@ function tick(){
   st.guard += (st.guardTarget - st.guard) * (1 - Math.exp(-11*dt));
 
   // 実機の姿勢をそのまま仮想カメラへ。床の向きが現実と揃う。
-  if (gyro.on) applyDeviceOrientation(camera.quaternion);
-  else camera.quaternion.copy(FALLBACK_Q);
+  // センサーは細かく震えるので、slerp で均してから使う。
+  if (gyro.on){
+    applyDeviceOrientation(_qTarget);
+    camera.quaternion.slerp(_qTarget, 1 - Math.exp(-13*dt));
+  } else {
+    camera.quaternion.copy(FALLBACK_Q);
+  }
   camera.updateMatrixWorld();
 
   key.position.set(chara.position.x + 1.8, GROUND_Y + 3.4, chara.position.z + 2.2);
@@ -761,6 +786,7 @@ function tick(){
   // --- 体: 振るとき踏み込み、威嚇で仰け反ってから突き出す
   var breathe = Math.sin(st.t*2.2)*0.010;
   torso.scale.set(0.345+breathe, 0.26-breathe+roarU*0.04, 0.27);
+  chara.rotation.y = charaYaw;
   chara.rotation.x = -swingArc*0.15 - roarU*0.09;
   chara.rotation.z += ((st.guard*0.05) - chara.rotation.z) * (1 - Math.exp(-6*dt));
   chara.position.y = GROUND_Y + (swingArc*0.05 + roarU*0.06) * chara.scale.y;
