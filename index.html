@@ -121,6 +121,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 (function(){
 'use strict';
@@ -515,6 +516,59 @@ chara.add(swordPivot);
     m.add(o);
   });
 })();
+
+// ---------------------------------------------------------------- 本番モデル
+// chara.glb があればプリミティブを差し替える。無ければそのまま。
+// 背丈を 1.9 に正規化して足を y=0 に置くので、肩や頭の位置の定数がそのまま生きる。
+// リグが無い前提なので腕は動かせない。剣と盾はプリミティブのまま全身に追従させる。
+var MODEL_URL = 'chara.glb';
+var model = null;
+
+function fitModel(root){
+  var box = new THREE.Box3().setFromObject(root);
+  var size = new THREE.Vector3(), center = new THREE.Vector3();
+  box.getSize(size); box.getCenter(center);
+  var k = 1.9 / (size.y || 1);
+  root.scale.setScalar(k);
+  root.position.set(-center.x*k, -box.min.y*k, -center.z*k);
+}
+
+function loadModel(){
+  if (typeof THREE.GLTFLoader !== 'function') return;
+  new THREE.GLTFLoader().load(MODEL_URL, function(g){
+    var root = g.scene;
+    root.traverse(function(o){
+      if (o.isMesh){ o.castShadow = true; o.frustumCulled = false; }
+    });
+    var holder = new THREE.Group();
+    holder.add(root);
+    fitModel(root);
+
+    // 剣と盾はモデルに含まれていない前提なので残し、それ以外は隠す
+    chara.children.forEach(function(c){
+      if (c !== shield && c !== swordPivot) c.visible = false;
+    });
+    chara.add(holder);
+    model = holder;
+
+    // 中身を報告する。ボーンの有無で次にリギングが要るかが決まる。
+    var bones = [], meshes = [], tris = 0;
+    root.traverse(function(o){
+      if (o.isBone) bones.push(o.name);
+      else if (o.isMesh){
+        meshes.push(o.name + (o.isSkinnedMesh ? ' [skinned]' : ''));
+        var gm = o.geometry;
+        if (gm && gm.index) tris += gm.index.count/3;
+        else if (gm && gm.attributes.position) tris += gm.attributes.position.count/3;
+      }
+    });
+    console.log('[model] 三角形数:', Math.round(tris));
+    console.log('[model] メッシュ:', meshes);
+    console.log('[model] ボーン:', bones.length, bones.slice(0, 40));
+    console.log('[model] アニメーション:', g.animations.map(function(a){ return a.name; }));
+  }, undefined, function(){ /* 無ければプリミティブのまま動く */ });
+}
+loadModel();
 
 // ---------------------------------------------------------------- エフェクト
 var slash = new THREE.Mesh(
@@ -976,6 +1030,10 @@ function tick(){
   // --- 体: 振るとき踏み込み、威嚇で仰け反ってから突き出す
   var breathe = Math.sin(st.t*2.2)*0.010;
   torso.scale.set(0.345+breathe, 0.26-breathe+roarU*0.04, 0.27);
+  if (model){   // 本番モデルは全身を伸縮させる（腕が動かないぶん、体で見せる）
+    model.scale.set(1 - breathe*1.5 - roarU*0.05, 1 + breathe*1.5 + roarU*0.07, 1 - breathe*1.5);
+    model.position.y = 0;
+  }
   // --- 手のほうを向く。見えていないときはカメラのほうを向く。
   detectHand();
   handLostT += dt;
