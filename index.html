@@ -34,6 +34,8 @@
 
   #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
   #cv{position:fixed;inset:0;display:block;touch-action:none}
+  /* 手の領域だけ実写を描き戻すレイヤー。3Dより前、HUDより後ろ。 */
+  #occ{position:fixed;inset:0;pointer-events:none}
 
   /* 操作は右手の親指が届く縦一列。撮影中に見ないで押せる位置。 */
   #acts{position:fixed;right:calc(14px + env(safe-area-inset-right,0px));top:50%;
@@ -92,6 +94,7 @@
 
 <video id="cam" playsinline muted autoplay></video>
 <canvas id="cv"></canvas>
+<canvas id="occ"></canvas>
 
 <div id="acts">
   <button class="act" id="aShield" aria-label="盾でふせぐ">
@@ -262,6 +265,7 @@ function updateFov(){
 function resize(){
   renderer.setSize(innerWidth, innerHeight, false);
   updateFov();
+  sizeOcc();
 }
 video.addEventListener('loadedmetadata', updateFov);
 addEventListener('resize', resize);
@@ -719,6 +723,8 @@ gate.addEventListener('click', boot);
 // 向きが変わらないだけで撮影は破綻しない。起動を遅らせないよう裏で読み込む。
 var handLM = null, handSeen = false, handLostT = 99, lastVT = -1;
 var handPx = {x:0, y:0};
+var handPts = [];                       // 21点の画面座標（遮蔽マスク用）
+for (var hi=0; hi<21; hi++) handPts.push({x:0, y:0});
 var MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 
 function loadHands(){
@@ -740,12 +746,21 @@ function loadHands(){
 }
 
 // 映像は object-fit:cover で切り取られる。その分を戻さないと数十pxずれる。
-function videoToScreen(nx, ny, out){
+// 遮蔽でも同じ対応関係で逆変換するので、ここに集約しておく。
+var _cm = {vw:1920, vh:1080, dw:0, dh:0, ox:0, oy:0};
+function coverMap(){
   var vw = video.videoWidth || 1920, vh = video.videoHeight || 1080;
-  var sw = innerWidth, sh = innerHeight;
-  var sc = Math.max(sw/vw, sh/vh);
-  out.x = (sw - vw*sc)*0.5 + nx*vw*sc;
-  out.y = (sh - vh*sc)*0.5 + ny*vh*sc;
+  var sc = Math.max(innerWidth/vw, innerHeight/vh);
+  _cm.vw = vw; _cm.vh = vh;
+  _cm.dw = vw*sc; _cm.dh = vh*sc;
+  _cm.ox = (innerWidth  - _cm.dw)*0.5;
+  _cm.oy = (innerHeight - _cm.dh)*0.5;
+  return _cm;
+}
+function videoToScreen(nx, ny, out){
+  var m = coverMap();
+  out.x = m.ox + nx*m.dw;
+  out.y = m.oy + ny*m.dh;
   return out;
 }
 function detectHand(){
@@ -754,8 +769,11 @@ function detectHand(){
   try {
     var res = handLM.detectForVideo(video, performance.now());
     var lm = res && res.landmarks && res.landmarks[0];
-    if (lm){ videoToScreen(lm[8].x, lm[8].y, handPx); handSeen = true; handLostT = 0; }
-    else handSeen = false;
+    if (lm){
+      for (var i=0; i<21 && i<lm.length; i++) videoToScreen(lm[i].x, lm[i].y, handPts[i]);
+      handPx.x = handPts[8].x; handPx.y = handPts[8].y;   // 人差し指の先
+      handSeen = true; handLostT = 0;
+    } else handSeen = false;
   } catch(e){}
 }
 
@@ -780,6 +798,92 @@ function sampleScene(dt){
   key.intensity  = 0.45 + sceneLum*1.50;
   blob.material.opacity  = 0.55 + sceneLum*0.45;
   floor.material.opacity = 0.16 + sceneLum*0.30;
+}
+
+// ---------------------------------------------------------------- 手による遮蔽
+// キャラを手の後ろに回す。手の形にマスクを作り、そこだけ実写の映像を 3D の上へ
+// 描き戻す。合成した色ではなく本物のピクセルなので、明るさも色も当然一致する。
+// 形はランドマーク21点から起こす近似（手のひらの多角形＋指を太い線）。
+var occ = $('occ'), occCtx = occ.getContext('2d');
+var maskCv = document.createElement('canvas');
+var maskCtx = maskCv.getContext('2d');
+var OCC_DPR = Math.min(devicePixelRatio, 1.5);
+var CAN_BLUR = (typeof maskCtx.filter === 'string');   // Safari 旧版は未対応
+var PALM = [0,1,5,9,13,17];
+var FINGERS = [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]];
+
+function sizeOcc(){
+  occ.width  = Math.round(innerWidth  * OCC_DPR);
+  occ.height = Math.round(innerHeight * OCC_DPR);
+  occ.style.width  = innerWidth + 'px';
+  occ.style.height = innerHeight + 'px';
+}
+
+function traceChain(ctx, idx){
+  ctx.beginPath();
+  for (var i=0; i<idx.length; i++){
+    var p = handPts[idx[i]];
+    if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y);
+  }
+}
+
+function drawOcclusion(){
+  occCtx.setTransform(1,0,0,1,0,0);
+  occCtx.clearRect(0, 0, occ.width, occ.height);
+  if (!(handSeen && handLostT < 0.5) || video.readyState < 2) return;
+
+  var minX=1e9, minY=1e9, maxX=-1e9, maxY=-1e9;
+  for (var i=0; i<21; i++){
+    var p = handPts[i];
+    if (p.x<minX) minX=p.x;  if (p.x>maxX) maxX=p.x;
+    if (p.y<minY) minY=p.y;  if (p.y>maxY) maxY=p.y;
+  }
+  var palmW = Math.hypot(handPts[5].x-handPts[17].x, handPts[5].y-handPts[17].y);
+  var thick = Math.max(palmW*0.34, 10);
+  var pad = thick + 16;
+  minX-=pad; minY-=pad; maxX+=pad; maxY+=pad;
+  var bw = maxX-minX, bh = maxY-minY;
+  if (bw <= 0 || bh <= 0) return;
+
+  var mw = Math.max(8, Math.round(bw*OCC_DPR)), mh = Math.max(8, Math.round(bh*OCC_DPR));
+  if (maskCv.width !== mw)  maskCv.width  = mw;
+  if (maskCv.height !== mh) maskCv.height = mh;
+  maskCtx.setTransform(1,0,0,1,0,0);
+  maskCtx.clearRect(0,0,mw,mh);
+  maskCtx.globalCompositeOperation = 'source-over';
+  maskCtx.setTransform(OCC_DPR, 0, 0, OCC_DPR, -minX*OCC_DPR, -minY*OCC_DPR);
+
+  // 輪郭はぼかす。ランドマークからの近似なので、硬い境界だと粗が出る。
+  if (CAN_BLUR) maskCtx.filter = 'blur(' + Math.max(2, thick*0.17).toFixed(1) + 'px)';
+  maskCtx.fillStyle = '#fff';
+  maskCtx.strokeStyle = '#fff';
+  maskCtx.lineCap = 'round';
+  maskCtx.lineJoin = 'round';
+
+  traceChain(maskCtx, PALM);
+  maskCtx.closePath();
+  maskCtx.lineWidth = thick*1.3;
+  maskCtx.fill();
+  maskCtx.stroke();
+
+  for (var f=0; f<FINGERS.length; f++){
+    maskCtx.lineWidth = thick * (f === 0 ? 1.15 : 0.95);   // 親指だけ太い
+    traceChain(maskCtx, FINGERS[f]);
+    maskCtx.stroke();
+  }
+
+  // マスクの内側にだけ実写を残す
+  var m = coverMap();
+  maskCtx.setTransform(1,0,0,1,0,0);
+  if (CAN_BLUR) maskCtx.filter = 'none';
+  maskCtx.globalCompositeOperation = 'source-in';
+  maskCtx.drawImage(video,
+    (minX - m.ox)/m.dw * m.vw, (minY - m.oy)/m.dh * m.vh,
+    bw/m.dw * m.vw,            bh/m.dh * m.vh,
+    0, 0, mw, mh);
+  maskCtx.globalCompositeOperation = 'source-over';
+
+  occCtx.drawImage(maskCv, Math.round(minX*OCC_DPR), Math.round(minY*OCC_DPR), mw, mh);
 }
 
 // ---------------------------------------------------------------- ループ
@@ -926,6 +1030,7 @@ function tick(){
   }
 
   renderer.render(scene, camera);
+  drawOcclusion();        // 3D を描いたあとに手を被せる
 }
 
 resize();
