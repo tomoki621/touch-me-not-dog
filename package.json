@@ -1,0 +1,13 @@
+{
+  "name": "touch-me-not-tools",
+  "private": true,
+  "type": "module",
+  "description": "モデル減量とカード学習のための作業用。アプリ本体はCDNのみで動く。",
+  "dependencies": {
+    "@gltf-transform/core": "^4.0.0",
+    "@gltf-transform/functions": "^4.0.0",
+    "@napi-rs/canvas": "^0.1.0",
+    "jimp": "0.22.12",
+    "mind-ar": "1.2.5"
+  }
+}

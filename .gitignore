@@ -6,3 +6,6 @@ tmpglb/
 node_modules/
 tex.mjs
 ルイーズ.jpg
+mkmind.mjs
+slim.mjs
+package-lock.json
