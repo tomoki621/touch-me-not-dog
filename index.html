@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>触らせてくれない</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap">
+<style>
+  /* 柴犬の毛色から起こしたウォームな中間色。灰色ではなく、橙に寄せた黒と紙。 */
+  :root{
+    --bg:#efe6d6; --fg:#2b241b; --dim:#7c6d58;
+    --accent:#e8792e; --ok:#2f8a67; --bad:#c4523a;
+    --chip:#00000010; --line:#0000001f; --veil:#2b241bb0;
+    --shadow:#00000026; --on-ink:#2b241b; --scrim:#efe6d6f2;
+    --display:"Dela Gothic One","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1b1815; --fg:#f6efe2; --dim:#a1937f;
+      --accent:#e8792e; --ok:#6ec9a4; --bad:#e8705a;
+      --chip:#ffffff14; --line:#ffffff26; --veil:#f6efe2b0;
+      --shadow:#00000099; --on-ink:#1b1815; --scrim:#1b1815f2;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1b1815; --fg:#f6efe2; --dim:#a1937f;
+    --accent:#e8792e; --ok:#6ec9a4; --bad:#e8705a;
+    --chip:#ffffff14; --line:#ffffff26; --veil:#f6efe2b0;
+    --shadow:#00000099; --on-ink:#1b1815; --scrim:#1b1815f2;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;background:var(--bg);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;color:var(--fg);
+    -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none}
+
+  #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+  #cv{position:fixed;inset:0;display:block;touch-action:none}
+
+  /* 指先マーカー。犬が「何を見て怯えているか」を可視化する。 */
+  #aim{position:fixed;left:0;top:0;width:54px;height:54px;margin:-27px 0 0 -27px;
+    border-radius:50%;border:2px solid var(--accent);pointer-events:none;opacity:0;
+    transition:opacity .18s;box-shadow:0 0 0 1px var(--shadow)}
+  #aim::after{content:"";position:absolute;inset:22px;border-radius:50%;background:var(--accent)}
+
+  .hud{position:fixed;left:0;right:0;pointer-events:none}
+  #top{top:0;padding:14px 16px calc(14px + env(safe-area-inset-top,0px));
+    display:flex;gap:18px;align-items:flex-start}
+  .stat{line-height:1.2}
+  .stat b{display:block;font-family:var(--display);font-weight:400;font-size:30px;
+    font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .stat span{font-size:11px;letter-spacing:.1em;color:var(--dim)}
+  .stat.ok b{color:var(--ok)}
+  .stat.no b{color:var(--accent)}
+
+  #meter{margin-left:auto;text-align:right}
+  #meterbar{width:96px;height:5px;border-radius:3px;background:var(--chip);
+    box-shadow:inset 0 0 0 1px var(--line);overflow:hidden;margin-top:8px}
+  #meterfill{height:100%;width:0%;background:var(--accent);transition:width .12s linear}
+
+  /* 手を見失っているのが一目で分かること。AR系はここが不親切だと使えない。 */
+  #track{position:fixed;left:50%;transform:translateX(-50%);
+    top:calc(12px + env(safe-area-inset-top,0px));
+    display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;
+    background:var(--scrim);border:1px solid var(--line);font-size:12px;
+    letter-spacing:.04em;pointer-events:none;transition:opacity .3s}
+  #dot{width:7px;height:7px;border-radius:50%;background:var(--bad);transition:background .3s}
+  #track.live #dot{background:var(--ok)}
+
+  #bottom{bottom:0;padding:0 12px calc(14px + env(safe-area-inset-bottom,0px));
+    display:flex;gap:7px;align-items:center;justify-content:center;flex-wrap:wrap}
+  .btn{pointer-events:auto;-webkit-appearance:none;appearance:none;border:1px solid var(--line);
+    background:var(--scrim);color:var(--fg);font:inherit;font-size:13px;padding:9px 15px;
+    border-radius:999px;cursor:pointer}
+  .btn:active{transform:scale(.96)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn.on{background:var(--accent);border-color:transparent;color:var(--on-ink);font-weight:700}
+
+  #sizewrap{pointer-events:auto;display:flex;align-items:center;gap:8px;padding:6px 14px;
+    border-radius:999px;background:var(--scrim);border:1px solid var(--line);font-size:12px;color:var(--dim)}
+  #size{width:96px;accent-color:var(--accent)}
+
+  #say{position:fixed;left:0;right:0;bottom:calc(70px + env(safe-area-inset-bottom,0px));
+    text-align:center;pointer-events:none;font-size:14px;color:var(--veil);
+    letter-spacing:.05em;transition:opacity .4s}
+
+  /* 描き文字。ここだけ声を張る。 */
+  .pop{position:fixed;pointer-events:none;transform:translate(-50%,-50%);
+    font-family:var(--display);font-size:32px;white-space:nowrap;
+    text-shadow:0 2px 12px var(--shadow);animation:pop .7s cubic-bezier(.2,.9,.3,1) forwards}
+  @keyframes pop{
+    0%{opacity:0;transform:translate(-50%,-50%) scale(.5) rotate(-8deg)}
+    22%{opacity:1;transform:translate(-50%,-64%) scale(1.15) rotate(3deg)}
+    100%{opacity:0;transform:translate(-50%,-130%) scale(1) rotate(0)}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .pop{animation-duration:.4s}
+    .btn:active{transform:none}
+  }
+
+  /* 起動ゲート。カメラ許可はユーザー操作起点でないとiOSが弾く。 */
+  #gate{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;padding:32px 26px;text-align:center;z-index:9}
+  #gate h1{font-family:var(--display);font-weight:400;font-size:clamp(28px,8vw,44px);
+    margin:0;letter-spacing:-.01em;text-wrap:balance}
+  #gate p{margin:0;max-width:30em;font-size:14px;line-height:1.85;color:var(--dim)}
+  #gate ol{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px;
+    font-size:13px;line-height:1.6;color:var(--dim);text-align:left;max-width:26em}
+  #gate li{display:flex;gap:10px}
+  #gate li b{font-family:var(--display);font-weight:400;color:var(--accent);
+    font-size:12px;flex:0 0 1.4em;padding-top:1px}
+  #start{font-size:16px;padding:14px 30px;font-weight:700;
+    background:var(--accent);color:var(--on-ink);border:none}
+  #note{font-size:12.5px;line-height:1.7;color:var(--bad);min-height:1.4em;max-width:28em}
+  #gate.busy #start{opacity:.5;pointer-events:none}
+</style>
+</head>
+<body>
+
+<video id="cam" playsinline muted autoplay></video>
+<canvas id="cv"></canvas>
+<div id="aim"></div>
+
+<div id="track"><span id="dot"></span><span id="trackTxt">手を探しています</span></div>
+
+<div class="hud" id="top">
+  <div class="stat no"><b id="sSwing">0</b><span>剣を振られた</span></div>
+  <div class="stat ok"><b id="sTouch">0</b><span>さわれた</span></div>
+  <div class="stat" id="meter">
+    <span>けいかい度</span>
+    <div id="meterbar"><div id="meterfill"></div></div>
+  </div>
+</div>
+
+<div id="say">手を犬に近づけてみて</div>
+
+<div class="hud" id="bottom">
+  <button class="btn" id="bPlace">犬を置く</button>
+  <div id="sizewrap"><span>大きさ</span><input type="range" id="size" min="0.4" max="2.2" step="0.05" value="1"></div>
+  <button class="btn" id="bFlip">カメラ切替</button>
+  <button class="btn" id="bReset">リセット</button>
+</div>
+
+<div id="gate">
+  <h1>触らせてくれない</h1>
+  <p>カメラに映ったあなたの手を検出して、近づくと剣で威嚇してくる犬です。</p>
+  <ol>
+    <li><b>1</b><span>背面カメラで、犬を立たせたい机や床を映す</span></li>
+    <li><b>2</b><span>「犬を置く」で画面をタップして設置する</span></li>
+    <li><b>3</b><span>その犬に手を伸ばす。触れたら勝ち</span></li>
+  </ol>
+  <button class="btn" id="start">カメラを起動</button>
+  <p id="note"></p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module">
+import { FilesetResolver, HandLandmarker }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const $ = function(id){ return document.getElementById(id); };
+const video = $('cam'), cv = $('cv'), aimEl = $('aim');
+const elSwing = $('sSwing'), elTouch = $('sTouch'), elFill = $('meterfill');
+const elTrack = $('track'), elTrackTxt = $('trackTxt'), elSay = $('say');
+const gate = $('gate'), note = $('note');
+
+// ---------------------------------------------------------------- three.js 土台
+const renderer = new THREE.WebGLRenderer({canvas:cv, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();   // 背景は常に透過。後ろのvideoが世界になる。
+scene.background = null;
+
+// 少し見下ろす画角。床面が画面下半分に出るので「机に置く」が成立する。
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x40382e, 0.8));
+const key = new THREE.DirectionalLight(0xfff2dd, 1.5);
+key.position.set(2.4, 4.4, 3.0);
+key.castShadow = true;
+key.shadow.mapSize.set(1024,1024);
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 16;
+key.shadow.camera.left = -3; key.shadow.camera.right = 3;
+key.shadow.camera.top = 3; key.shadow.camera.bottom = -3;
+key.shadow.bias = -0.0015;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x88aaff, 0.45);
+rim.position.set(-3, 2, -2.5);
+scene.add(rim);
+
+// 影だけの床。平面検知はしていないが、影があるだけで「乗っている」ように見える。
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40,40), new THREE.ShadowMaterial({opacity:0.3}));
+floor.rotation.x = -Math.PI/2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// 設置モードのレティクル
+const reticle = new THREE.Mesh(
+  new THREE.TorusGeometry(0.55, 0.022, 8, 40),
+  new THREE.MeshBasicMaterial({color:0xe8792e, transparent:true, opacity:0.9})
+);
+reticle.rotation.x = -Math.PI/2;
+reticle.visible = false;
+scene.add(reticle);
+
+const FIT_W = 1.05, FIT_H = 1.15;
+function resize(){
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w,h,false);
+  const aspect = w/h;
+  camera.aspect = aspect;
+  const t = Math.tan(THREE.MathUtils.degToRad(camera.fov)*0.5);
+  const dz = THREE.MathUtils.clamp(Math.max(FIT_H/t, FIT_W/(t*aspect)), 3.6, 6.6);
+  camera.position.set(0, 1.75, dz);
+  camera.lookAt(0, 0.62, 0);
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', ()=> setTimeout(resize, 300));
+if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+
+// ---------------------------------------------------------------- 犬（プリミティブ・ボーンなし）
+function M(color, rough, metal){
+  return new THREE.MeshStandardMaterial({color, roughness:rough===undefined?0.85:rough, metalness:metal||0});
+}
+const matFur=M(0xe0a869,0.9), matCream=M(0xfaf0dc,0.9), matDark=M(0x2b241d,0.6),
+      matSteel=M(0xc9d3dc,0.35,0.85), matWood=M(0x8b5a2b,0.8),
+      matShield=M(0x9aa4ad,0.45,0.6), matBoss=M(0xe8792e,0.5,0.2);
+
+const dog = new THREE.Group();
+scene.add(dog);
+
+function add(parent, mesh, x,y,z){
+  mesh.position.set(x||0, y||0, z||0);
+  mesh.castShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+const SPH = new THREE.SphereGeometry(1,24,18);
+const CYL = new THREE.CylinderGeometry(1,1,1,16);
+const CONE= new THREE.ConeGeometry(1,1,14);
+
+const body = add(dog, new THREE.Mesh(SPH, matFur), 0, 0.86, 0);
+body.scale.set(0.52,0.47,0.6);
+add(dog, new THREE.Mesh(SPH, matCream), 0, 0.76, 0.16).scale.set(0.40,0.34,0.48);
+
+[[-0.28,0.33],[0.28,0.33],[-0.26,-0.28],[0.26,-0.28]].forEach(p=>{
+  add(dog, new THREE.Mesh(CYL, matFur), p[0], 0.24, p[1]).scale.set(0.11,0.48,0.11);
+  add(dog, new THREE.Mesh(SPH, matCream), p[0], 0.06, p[1]+0.03).scale.set(0.12,0.07,0.15);
+});
+
+const tail = new THREE.Group();
+tail.position.set(0, 1.02, -0.5);
+dog.add(tail);
+add(tail, new THREE.Mesh(SPH, matFur), 0, 0.16, -0.06).scale.set(0.14,0.24,0.14);
+
+const HEAD = new THREE.Vector3(0, 1.45, 0.16);
+const head = new THREE.Group();
+head.position.copy(HEAD);
+dog.add(head);
+add(head, new THREE.Mesh(SPH, matFur), 0,0,0).scale.set(0.44,0.40,0.42);
+add(head, new THREE.Mesh(SPH, matCream), 0,-0.08,0.34).scale.set(0.24,0.18,0.18);
+add(head, new THREE.Mesh(SPH, matDark), 0,-0.03,0.50).scale.set(0.075,0.06,0.06);
+
+[-1,1].forEach(s=>{
+  const e = add(head, new THREE.Mesh(CONE, matFur), s*0.26, 0.36, -0.02);
+  e.scale.set(0.15,0.30,0.12); e.rotation.z = s*0.28;
+  const i = add(head, new THREE.Mesh(CONE, matCream), s*0.255, 0.33, 0.04);
+  i.scale.set(0.085,0.20,0.07); i.rotation.z = s*0.28;
+});
+
+const eyes = [];
+[-1,1].forEach(s=>{
+  const g = new THREE.Group();
+  g.position.set(s*0.19, 0.08, 0.35);
+  head.add(g);
+  add(g, new THREE.Mesh(SPH, matDark), 0,0,0).scale.setScalar(0.072);
+  add(g, new THREE.Mesh(SPH, M(0xffffff,0.3)), 0.025, 0.028, 0.05).scale.setScalar(0.026);
+  eyes.push(g);
+});
+
+const blushMat = new THREE.MeshBasicMaterial({color:0xff8a9a, transparent:true, opacity:0});
+[-1,1].forEach(s=>{
+  const b = add(head, new THREE.Mesh(new THREE.CircleGeometry(0.09,16), blushMat), s*0.31,-0.06,0.28);
+  b.rotation.y = s*0.5; b.castShadow = false;
+});
+
+// 盾と剣
+const SHOULDER_L = new THREE.Vector3(-0.40, 1.05, 0.18);
+const SHOULDER_R = new THREE.Vector3( 0.40, 1.05, 0.18);
+const ORBIT = 0.80, SHIELD_R = 0.40;
+
+const shield = new THREE.Group();
+dog.add(shield);
+add(shield, new THREE.Mesh(CYL, matShield), 0,0,0).scale.set(SHIELD_R,0.055,SHIELD_R);
+add(shield, new THREE.Mesh(SPH, matBoss), 0,0.05,0).scale.set(0.15,0.06,0.15);
+const sRim = add(shield, new THREE.Mesh(new THREE.TorusGeometry(SHIELD_R,0.035,8,28), matSteel), 0,0.01,0);
+sRim.rotation.x = Math.PI/2;
+
+const swordPivot = new THREE.Group();
+swordPivot.position.copy(SHOULDER_R);
+dog.add(swordPivot);
+add(swordPivot, new THREE.Mesh(new THREE.BoxGeometry(0.07,0.72,0.02), matSteel), 0.30,0.46,0.10);
+add(swordPivot, new THREE.Mesh(new THREE.BoxGeometry(0.24,0.05,0.05), matSteel), 0.30,0.12,0.10);
+const grip = add(swordPivot, new THREE.Mesh(CYL, matWood), 0.30,0.02,0.10);
+grip.scale.set(0.035,0.18,0.035);
+
+const armL = add(dog, new THREE.Mesh(CYL, matFur), 0,0,0);
+const armR = add(dog, new THREE.Mesh(CYL, matFur), 0,0,0);
+const handL = add(dog, new THREE.Mesh(SPH, matCream), 0,0,0); handL.scale.setScalar(0.10);
+const handR = add(dog, new THREE.Mesh(SPH, matCream), 0,0,0); handR.scale.setScalar(0.10);
+
+// 肩から手先へ円柱を引き伸ばすだけ。スキニングもボーンも要らない。
+const _up = new THREE.Vector3(0,1,0), _d = new THREE.Vector3();
+function stretchLimb(mesh, from, to, thick){
+  _d.subVectors(to, from);
+  const len = _d.length();
+  mesh.position.copy(from).add(to).multiplyScalar(0.5);
+  mesh.quaternion.setFromUnitVectors(_up, _d.normalize());
+  mesh.scale.set(thick, len, thick);
+}
+
+// ---------------------------------------------------------------- 手のトラッキング
+let handLandmarker = null;
+let mirror = false;                 // 背面カメラは反転しない
+let facing = 'environment';
+let stream = null;
+
+// 映像は object-fit:cover で表示されるので、正規化座標→画面座標の変換で
+// はみ出した分を必ず打ち消す。ここを省くと指先マーカーが数十px ずれる。
+function videoToScreen(nx, ny, out){
+  const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+  const sw = innerWidth, sh = innerHeight;
+  const s = Math.max(sw/vw, sh/vh);
+  const dw = vw*s, dh = vh*s;
+  out.x = (sw-dw)*0.5 + nx*dw;
+  out.y = (sh-dh)*0.5 + ny*dh;
+  if (mirror) out.x = sw - out.x;
+  out.scale = s;
+  return out;
+}
+
+const hand = {
+  seen:false, lostT:99, px:{x:0,y:0,scale:1},
+  size:0,            // 手の見かけの大きさ（画面高に対する比）＝ざっくり距離の代わり
+  depth:0            // 0=遠い 1=近い
+};
+let lastVideoTime = -1;
+
+function detectHands(now){
+  if (!handLandmarker || video.readyState < 2) return;
+  if (video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+
+  let res;
+  try { res = handLandmarker.detectForVideo(video, now); }
+  catch(e){ return; }
+
+  const lm = res && res.landmarks && res.landmarks[0];
+  if (!lm){ hand.seen = false; return; }
+
+  videoToScreen(lm[8].x, lm[8].y, hand.px);          // 8 = 人差し指の先
+
+  // 手首(0)と中指付け根(9)の距離＝手の見かけサイズ。単眼なので奥行きはこれで代用。
+  const vh = video.videoHeight || 720;
+  const dx = (lm[0].x - lm[9].x) * (video.videoWidth||1280);
+  const dy = (lm[0].y - lm[9].y) * vh;
+  hand.size = Math.hypot(dx, dy) / vh;
+  hand.depth = THREE.MathUtils.clamp((hand.size - 0.055) / (0.20 - 0.055), 0, 1);
+  hand.seen = true;
+  hand.lostT = 0;
+}
+
+// ---------------------------------------------------------------- 狙い座標（手 → 無ければマウス）
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const aimPlane = new THREE.Plane();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+const aimWorld = new THREE.Vector3();
+const aimLocal = new THREE.Vector3();
+const headWorld = new THREE.Vector3();
+const headPx = {x:0, y:0};
+const mouse = {x:innerWidth/2, y:innerHeight*0.5, active:false};
+const camDir = new THREE.Vector3();
+const _v = new THREE.Vector3();
+
+function screenToNdc(px, py){
+  ndc.x = (px/innerWidth)*2 - 1;
+  ndc.y = -(py/innerHeight)*2 + 1;
+  return ndc;
+}
+
+// ---------------------------------------------------------------- 設置
+let placing = false;
+cv.addEventListener('pointerdown', e=>{
+  mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true;
+  if (!placing) return;
+  raycaster.setFromCamera(screenToNdc(e.clientX, e.clientY), camera);
+  const hit = raycaster.ray.intersectPlane(groundPlane, new THREE.Vector3());
+  if (hit){ dog.position.x = hit.x; dog.position.z = THREE.MathUtils.clamp(hit.z, -6, 2); }
+});
+cv.addEventListener('pointermove', e=>{ mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true; });
+
+$('bPlace').addEventListener('click', function(){
+  placing = !placing;
+  this.classList.toggle('on', placing);
+  reticle.visible = placing;
+  say(placing ? '床や机をタップして置いてください' : '手を犬に近づけてみて');
+});
+$('size').addEventListener('input', function(){
+  const s = parseFloat(this.value);
+  dog.scale.setScalar(s);
+});
+
+// ---------------------------------------------------------------- ゲーム状態
+const st = { swings:0, touched:0, wary:0, blockT:0, hitT:0, stunT:0, swingCd:0, t:0,
+             shieldDir:new THREE.Vector3(0,0,1), threat:0 };
+
+const WORD_SWING = ['ガッ！','シャキン','だめ','触るな','スパッ','ムッ'];
+const WORD_TOUCH = ['ぅゎ…','っ！','もふ','わふ…','♥'];
+const pick = a => a[(Math.random()*a.length)|0];
+
+function pop(text, color, x, y){
+  const d = document.createElement('div');
+  d.className = 'pop';
+  d.textContent = text;
+  d.style.color = color;
+  d.style.left = x+'px'; d.style.top = y+'px';
+  document.body.appendChild(d);
+  setTimeout(()=> d.remove(), 720);
+}
+let sayT = 0;
+function say(msg){ elSay.textContent = msg; elSay.style.opacity = 1; sayT = 3.2; }
+
+function swing(x, y){
+  st.swings++;
+  st.wary = Math.min(1, st.wary + 0.06);
+  st.blockT = 1; st.swingCd = 0.55;
+  elSwing.textContent = st.swings;
+  pop(pick(WORD_SWING), getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), x, y);
+}
+function touched(x, y){
+  st.touched++;
+  st.wary = Math.min(1, st.wary + 0.15);
+  st.hitT = 1; st.stunT = 0.6; st.swingCd = 0.8;
+  elTouch.textContent = st.touched;
+  pop(pick(WORD_TOUCH), getComputedStyle(document.documentElement).getPropertyValue('--ok').trim(), x, y);
+}
+
+$('bReset').addEventListener('click', ()=>{
+  st.swings = st.touched = 0; st.wary = 0;
+  elSwing.textContent = '0'; elTouch.textContent = '0';
+  elFill.style.width = '0%';
+});
+
+// ---------------------------------------------------------------- カメラ
+async function openCamera(){
+  if (stream) stream.getTracks().forEach(t=>t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:facing, width:{ideal:1280}, height:{ideal:720} }, audio:false
+  });
+  video.srcObject = stream;
+  mirror = (facing === 'user');
+  video.style.transform = mirror ? 'scaleX(-1)' : 'none';
+  await video.play();
+}
+
+$('bFlip').addEventListener('click', async ()=>{
+  facing = (facing === 'environment') ? 'user' : 'environment';
+  try { await openCamera(); say(facing === 'user' ? 'フロントカメラ' : '背面カメラ'); }
+  catch(e){ say('カメラを切り替えられませんでした'); }
+});
+
+// ---------------------------------------------------------------- 起動
+$('start').addEventListener('click', async ()=>{
+  gate.classList.add('busy');
+  note.style.color = 'var(--dim)';
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    note.style.color = 'var(--bad)';
+    note.textContent = 'このページはHTTPSまたはlocalhostで開く必要があります。file:// や http:// のIPアドレスだとブラウザがカメラを許可しません。';
+    gate.classList.remove('busy');
+    return;
+  }
+
+  try {
+    note.textContent = 'カメラの許可を待っています…';
+    await openCamera();
+  } catch(e){
+    note.style.color = 'var(--bad)';
+    note.textContent = 'カメラを開けませんでした（' + (e && e.name ? e.name : 'エラー') +
+      '）。ブラウザの権限設定でカメラを許可してから、もう一度お試しください。';
+    gate.classList.remove('busy');
+    return;
+  }
+
+  try {
+    note.textContent = '手の検出モデルを読み込んでいます…（初回のみ約8MB）';
+    const vision = await FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    const opts = {
+      baseOptions:{
+        modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+        delegate:'GPU'
+      },
+      runningMode:'VIDEO', numHands:1
+    };
+    try { handLandmarker = await HandLandmarker.createFromOptions(vision, opts); }
+    catch(e){ opts.baseOptions.delegate = 'CPU';
+              handLandmarker = await HandLandmarker.createFromOptions(vision, opts); }
+  } catch(e){
+    // モデルが落ちてきてもマウス操作で遊べるようにしておく
+    elTrackTxt.textContent = '手の検出なし（マウス操作）';
+    say('手の検出を読み込めませんでした。画面上のカーソルで代用します');
+  }
+
+  gate.style.display = 'none';
+  resize();
+  say('「犬を置く」で床や机の上にどうぞ');
+});
+
+// ---------------------------------------------------------------- ループ
+const clock = new THREE.Clock();
+const _target = new THREE.Vector3();
+const _shPos = new THREE.Vector3();
+const _hand = new THREE.Vector3();
+
+function tick(){
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  st.t += dt;
+
+  detectHands(performance.now());
+
+  hand.lostT += dt;
+  const live = hand.seen && hand.lostT < 0.4;
+  elTrack.classList.toggle('live', live);
+  if (handLandmarker) elTrackTxt.textContent = live ? '手を追跡中' : '手を探しています';
+  elTrack.style.opacity = placing ? 0.25 : 1;
+
+  st.blockT  = Math.max(0, st.blockT  - dt*3.2);
+  st.hitT    = Math.max(0, st.hitT    - dt*1.6);
+  st.stunT   = Math.max(0, st.stunT   - dt);
+  st.swingCd = Math.max(0, st.swingCd - dt);
+  st.wary    = Math.max(0, st.wary - dt*0.02);
+  if (sayT > 0){ sayT -= dt; if (sayT <= 0) elSay.style.opacity = 0; }
+
+  // --- 狙い点: 手が見えていれば指先、無ければカーソル
+  const aimPx = live ? hand.px : mouse;
+  const depth = live ? hand.depth : 1;
+
+  dog.updateMatrixWorld(true);
+  headWorld.copy(HEAD).applyMatrix4(dog.matrixWorld);
+
+  // 犬の頭を通り、カメラに正対する面へ投影する（見下ろし角があるので法線はカメラ向き）
+  camera.getWorldDirection(camDir);
+  aimPlane.setFromNormalAndCoplanarPoint(camDir, headWorld);
+  raycaster.setFromCamera(screenToNdc(aimPx.x, aimPx.y), camera);
+  if (!raycaster.ray.intersectPlane(aimPlane, aimWorld)) aimWorld.copy(headWorld);
+
+  aimLocal.copy(aimWorld);
+  dog.worldToLocal(aimLocal);
+
+  // 頭の画面上の位置。脅威度は画面距離で測ると体感と合う。
+  _v.copy(headWorld).project(camera);
+  headPx.x = (_v.x*0.5+0.5)*innerWidth;
+  headPx.y = (-_v.y*0.5+0.5)*innerHeight;
+
+  const reach = Math.min(innerWidth, innerHeight) * 0.34 * Math.max(dog.scale.x, 0.4);
+  const dPx = Math.hypot(aimPx.x - headPx.x, aimPx.y - headPx.y);
+  const near = THREE.MathUtils.clamp(1 - dPx/reach, 0, 1);
+  st.threat = near * (0.35 + 0.65*depth);
+
+  // 指先マーカー
+  aimEl.style.transform = 'translate(' + aimPx.x + 'px,' + aimPx.y + 'px) scale(' + (0.7 + depth*0.5) + ')';
+  aimEl.style.opacity = (live || mouse.active) && !placing ? (0.35 + st.threat*0.65) : 0;
+
+  // --- 手が近づいたら剣を振る。これがこのアプリの本体。
+  if (!placing && st.threat > 0.55 && st.swingCd <= 0 && st.stunT <= 0){
+    const _sp = new THREE.Vector3();
+    shield.getWorldPosition(_sp);
+    _v.copy(_sp).project(camera);
+    const sx = (_v.x*0.5+0.5)*innerWidth, sy = (-_v.y*0.5+0.5)*innerHeight;
+    const guarded = Math.hypot(aimPx.x - sx, aimPx.y - sy) < reach*0.42;
+    if (guarded) swing(aimPx.x, aimPx.y);
+    else if (dPx < reach*0.30) touched(aimPx.x, aimPx.y);
+    else swing(aimPx.x, aimPx.y);
+  }
+  elFill.style.width = (st.wary*100).toFixed(0) + '%';
+
+  // --- 盾: 手のいる方向へ回り込む。追従の遅れがそのまま攻略の隙になる。
+  _target.subVectors(aimLocal, HEAD);
+  if (_target.lengthSq() < 1e-5) _target.set(0,0,1);
+  _target.normalize();
+  _target.z = Math.max(_target.z, 0.25);
+  _target.normalize();
+  const follow = st.stunT > 0 ? 0.4 : (2.4 + st.wary*5.0 + st.threat*3.0);
+  st.shieldDir.lerp(_target, 1 - Math.exp(-follow*dt)).normalize();
+
+  const droop = st.stunT > 0 ? -0.30 : 0;
+  _shPos.copy(st.shieldDir).multiplyScalar(ORBIT + st.blockT*0.16 + st.threat*0.10)
+        .add(HEAD).add(new THREE.Vector3(0, droop, 0));
+  shield.position.copy(_shPos);
+  shield.quaternion.setFromUnitVectors(_up, st.shieldDir);
+  shield.rotateY(st.t*0.6 + st.blockT*4);
+
+  _hand.copy(_shPos).addScaledVector(st.shieldDir, -0.10);
+  stretchLimb(armL, SHOULDER_L, _hand, 0.075);
+  handL.position.copy(_hand);
+
+  swordPivot.rotation.z = -0.25 + Math.sin(st.t*1.7)*0.06 - st.blockT*1.5 - st.threat*0.35;
+  swordPivot.rotation.x = st.blockT*0.5;
+  swordPivot.updateMatrixWorld(true);
+  grip.getWorldPosition(_hand);
+  dog.worldToLocal(_hand);
+  stretchLimb(armR, SHOULDER_R, _hand, 0.075);
+  handR.position.copy(_hand);
+
+  // --- 体: 手から逃げる
+  const away = -st.shieldDir.x * (0.10 + st.threat*0.14);
+  body.scale.set(0.52 + Math.sin(st.t*2.4)*0.012, 0.47 - Math.sin(st.t*2.4)*0.012, 0.6);
+  dog.rotation.z += ((st.shieldDir.x*0.10) - dog.rotation.z) * (1 - Math.exp(-6*dt));
+  dog.position.y = st.blockT*0.05;
+  head.position.x += (away - head.position.x) * (1 - Math.exp(-6*dt));
+
+  const yaw = THREE.MathUtils.clamp(aimLocal.x*0.35, -0.5, 0.5);
+  const pit = THREE.MathUtils.clamp((HEAD.y - aimLocal.y)*0.35, -0.35, 0.35);
+  head.rotation.y += (yaw - head.rotation.y) * (1 - Math.exp(-9*dt));
+  head.rotation.x += (pit - head.rotation.x) * (1 - Math.exp(-9*dt));
+  head.position.y = HEAD.y + st.hitT*0.03*Math.sin(st.t*40);
+
+  tail.rotation.z = Math.sin(st.t*(3 + st.wary*9 + st.threat*6))*0.5;
+  tail.rotation.x = -0.5;
+  blushMat.opacity = st.hitT*0.85;
+  const sq = 1 - Math.max(st.wary, st.threat)*0.45;
+  eyes.forEach(e=> e.scale.set(1, sq, 1));
+
+  if (placing){
+    reticle.position.set(dog.position.x, 0.01, dog.position.z);
+    reticle.scale.setScalar(dog.scale.x);
+    reticle.material.opacity = 0.55 + Math.sin(st.t*4)*0.25;
+  }
+
+  renderer.render(scene, camera);
+}
+
+resize();
+tick();
+</script>
+</body>
+</html>

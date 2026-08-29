@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>触らせてくれない</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap">
+<style>
+  /* 柴犬の毛色から起こしたウォームな中間色。灰色ではなく、橙に寄せた黒と紙。 */
+  :root{
+    --bg:#efe6d6; --fg:#2b241b; --dim:#7c6d58;
+    --accent:#e8792e; --ok:#2f8a67;
+    --chip:#00000010; --line:#0000001f; --veil:#2b241bb0;
+    --shadow:#00000026; --on-ink:#2b241b;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1b1815; --fg:#f6efe2; --dim:#a1937f;
+      --accent:#e8792e; --ok:#6ec9a4;
+      --chip:#ffffff14; --line:#ffffff26; --veil:#f6efe2b0;
+      --shadow:#00000099; --on-ink:#1b1815;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1b1815; --fg:#f6efe2; --dim:#a1937f;
+    --accent:#e8792e; --ok:#6ec9a4;
+    --chip:#ffffff14; --line:#ffffff26; --veil:#f6efe2b0;
+    --shadow:#00000099; --on-ink:#1b1815;
+  }
+
+  /* 表示用の一発面。数字と「ガッ！」だけに使う。 */
+  :root{ --display:"Dela Gothic One","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; }
+
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;background:var(--bg);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;color:var(--fg);
+    -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none}
+  #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:none;transform:scaleX(-1)}
+  #cv{position:fixed;inset:0;display:block;touch-action:none;cursor:crosshair}
+
+  .hud{position:fixed;left:0;right:0;pointer-events:none;user-select:none}
+  #top{top:0;padding:14px 16px calc(14px + env(safe-area-inset-top,0px));
+    display:flex;gap:18px;align-items:flex-start}
+  .stat{line-height:1.2}
+  .stat b{display:block;font-family:var(--display);font-weight:400;font-size:30px;
+    font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .stat span{font-size:11px;letter-spacing:.1em;color:var(--dim)}
+  .stat.ok b{color:var(--ok)}
+  .stat.no b{color:var(--accent)}
+
+  #meter{margin-left:auto;text-align:right}
+  #meterbar{width:96px;height:5px;border-radius:3px;background:var(--chip);
+    box-shadow:inset 0 0 0 1px var(--line);overflow:hidden;margin-top:8px}
+  #meterfill{height:100%;width:0%;background:var(--accent);transition:width .25s}
+
+  #bottom{bottom:0;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px));
+    display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap}
+  .btn{pointer-events:auto;-webkit-appearance:none;appearance:none;border:1px solid var(--line);
+    background:var(--chip);color:var(--fg);font:inherit;font-size:13px;padding:9px 15px;
+    border-radius:999px;cursor:pointer;backdrop-filter:blur(8px)}
+  .btn:active{transform:scale(.96)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn.on{background:var(--accent);border-color:transparent;color:var(--on-ink);font-weight:700}
+
+  #hint{position:fixed;left:0;right:0;top:46%;text-align:center;pointer-events:none;
+    font-size:15px;color:var(--veil);letter-spacing:.06em;transition:opacity .5s}
+
+  /* 効果音は漫画の描き文字として置く。ここだけ声を張る。 */
+  .pop{position:fixed;pointer-events:none;transform:translate(-50%,-50%);
+    font-family:var(--display);font-size:30px;white-space:nowrap;
+    text-shadow:0 2px 12px var(--shadow);
+    animation:pop .7s cubic-bezier(.2,.9,.3,1) forwards}
+  @keyframes pop{
+    0%{opacity:0;transform:translate(-50%,-50%) scale(.5) rotate(-8deg)}
+    22%{opacity:1;transform:translate(-50%,-64%) scale(1.15) rotate(3deg)}
+    100%{opacity:0;transform:translate(-50%,-130%) scale(1) rotate(0)}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .pop{animation-duration:.4s}
+    .btn:active{transform:none}
+  }
+</style>
+</head>
+<body>
+
+<video id="cam" playsinline muted autoplay></video>
+<canvas id="cv"></canvas>
+
+<div class="hud" id="top">
+  <div class="stat no"><b id="sBlock">0</b><span>ブロックされた</span></div>
+  <div class="stat ok"><b id="sTouch">0</b><span>さわれた</span></div>
+  <div class="stat" id="meter">
+    <span>けいかい度</span>
+    <div id="meterbar"><div id="meterfill"></div></div>
+  </div>
+</div>
+
+<div id="hint">画面をタップして さわってみて</div>
+
+<div class="hud" id="bottom">
+  <button class="btn" id="bCam">カメラ背景</button>
+  <button class="btn" id="bReset">リセット</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+// headを自前で持てない環境（Artifact等）でも、全画面タッチ前提のviewportを保証する
+(function(){
+  var m = document.querySelector('meta[name="viewport"]');
+  if (!m){ m = document.createElement('meta'); m.name = 'viewport'; document.head.appendChild(m); }
+  m.setAttribute('content',
+    'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover');
+})();
+
+// ---------------------------------------------------------------- 基本セットアップ
+var cv = document.getElementById('cv');
+var renderer = new THREE.WebGLRenderer({canvas:cv, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+var scene = new THREE.Scene();
+var SKY = new THREE.Color(0x1b1815);
+
+// 3D側の地色もCSSトークンから取る。ライト/ダークどちらで開いても馴染む。
+function syncGround(){
+  var css = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  if (css) SKY.set(css);
+  if (!camOn) scene.background = SKY;
+  var lum = SKY.r*0.3 + SKY.g*0.6 + SKY.b*0.1;
+  if (floor) floor.material.opacity = lum > 0.5 ? 0.16 : 0.32;
+}
+
+var camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+camera.position.set(0, 1.55, 4.4);
+camera.lookAt(0, 1.05, 0);
+
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x40382e, 0.75));
+var key = new THREE.DirectionalLight(0xfff2dd, 1.5);
+key.position.set(2.4, 4.2, 3.0);
+key.castShadow = true;
+key.shadow.mapSize.set(1024,1024);
+key.shadow.camera.near = 0.5; key.shadow.camera.far = 14;
+key.shadow.camera.left = -3; key.shadow.camera.right = 3;
+key.shadow.camera.top = 3; key.shadow.camera.bottom = -3;
+key.shadow.bias = -0.0015;
+scene.add(key);
+var rim = new THREE.DirectionalLight(0x88aaff, 0.5);
+rim.position.set(-3, 2, -2.5);
+scene.add(rim);
+
+// 影だけ落ちる床（カメラ背景ONでも“机に乗ってる感”が残る）
+var floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(20,20),
+  new THREE.ShadowMaterial({opacity:0.3})
+);
+floor.rotation.x = -Math.PI/2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+syncGround();
+if (matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncGround);
+
+// 縦長スマホは横の画角が足りなくなるので、アスペクトからカメラ距離を逆算する
+var FIT_W = 0.95;   // 横に最低限映したい半幅（頭＋盾のだいたい）
+var FIT_H = 1.05;   // 縦に最低限映したい半高
+function resize(){
+  var w = innerWidth, h = innerHeight;
+  renderer.setSize(w,h,false);
+  var aspect = w/h;
+  camera.aspect = aspect;
+  var t = Math.tan(THREE.MathUtils.degToRad(camera.fov)*0.5);
+  var dz = Math.max(FIT_H/t, FIT_W/(t*aspect));
+  camera.position.set(0, 1.45, THREE.MathUtils.clamp(dz, 3.4, 6.2));
+  camera.lookAt(0, 1.08, 0);
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', function(){ setTimeout(resize, 300); });
+if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+
+// ---------------------------------------------------------------- マテリアル
+function M(color, rough, metal){
+  return new THREE.MeshStandardMaterial({color:color, roughness:rough===undefined?0.85:rough, metalness:metal||0});
+}
+var matFur   = M(0xe0a869, 0.9);
+var matCream = M(0xfaf0dc, 0.9);
+var matDark  = M(0x2b241d, 0.6);
+var matSteel = M(0xc9d3dc, 0.35, 0.85);
+var matWood  = M(0x8b5a2b, 0.8);
+var matShield= M(0x9aa4ad, 0.45, 0.6);
+var matBoss  = M(0xe8792e, 0.5, 0.2);
+
+// ---------------------------------------------------------------- 犬（プリミティブ組み立て・ボーンなし）
+var dog = new THREE.Group();
+scene.add(dog);
+
+function add(parent, mesh, x,y,z){
+  mesh.position.set(x||0, y||0, z||0);
+  mesh.castShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+var SPH = new THREE.SphereGeometry(1, 24, 18);
+var CYL = new THREE.CylinderGeometry(1, 1, 1, 16);
+var CONE= new THREE.ConeGeometry(1, 1, 14);
+
+// 胴
+var body = add(dog, new THREE.Mesh(SPH, matFur), 0, 0.86, 0);
+body.scale.set(0.52, 0.47, 0.6);
+var belly = add(dog, new THREE.Mesh(SPH, matCream), 0, 0.76, 0.16);
+belly.scale.set(0.40, 0.34, 0.48);
+
+// 脚
+[[-0.28,0.33],[0.28,0.33],[-0.26,-0.28],[0.26,-0.28]].forEach(function(p){
+  var l = add(dog, new THREE.Mesh(CYL, matFur), p[0], 0.24, p[1]);
+  l.scale.set(0.11, 0.48, 0.11);
+  var f = add(dog, new THREE.Mesh(SPH, matCream), p[0], 0.06, p[1]+0.03);
+  f.scale.set(0.12, 0.07, 0.15);
+});
+
+// しっぽ
+var tail = new THREE.Group();
+tail.position.set(0, 1.02, -0.5);
+dog.add(tail);
+var tailM = add(tail, new THREE.Mesh(SPH, matFur), 0, 0.16, -0.06);
+tailM.scale.set(0.14, 0.24, 0.14);
+
+// 頭（グループごと動かす）
+var HEAD_POS = new THREE.Vector3(0, 1.45, 0.16);
+var head = new THREE.Group();
+head.position.copy(HEAD_POS);
+dog.add(head);
+
+var skull = add(head, new THREE.Mesh(SPH, matFur), 0, 0, 0);
+skull.scale.set(0.44, 0.40, 0.42);
+var snout = add(head, new THREE.Mesh(SPH, matCream), 0, -0.08, 0.34);
+snout.scale.set(0.24, 0.18, 0.18);
+add(head, new THREE.Mesh(SPH, matDark), 0, -0.03, 0.50).scale.set(0.075,0.06,0.06);
+
+// 耳
+[-1,1].forEach(function(s){
+  var e = add(head, new THREE.Mesh(CONE, matFur), s*0.26, 0.36, -0.02);
+  e.scale.set(0.15, 0.30, 0.12);
+  e.rotation.z = s*0.28;
+  var i = add(head, new THREE.Mesh(CONE, matCream), s*0.255, 0.33, 0.04);
+  i.scale.set(0.085, 0.20, 0.07);
+  i.rotation.z = s*0.28;
+});
+
+// 目
+var eyes = [];
+[-1,1].forEach(function(s){
+  var g = new THREE.Group();
+  g.position.set(s*0.19, 0.08, 0.35);
+  head.add(g);
+  var e = add(g, new THREE.Mesh(SPH, matDark), 0,0,0);
+  e.scale.setScalar(0.072);
+  var hl = add(g, new THREE.Mesh(SPH, M(0xffffff,0.3)), 0.025, 0.028, 0.05);
+  hl.scale.setScalar(0.026);
+  eyes.push(g);
+});
+
+// ほっぺ（さわられた時だけ出る）
+var blushMat = new THREE.MeshBasicMaterial({color:0xff8a9a, transparent:true, opacity:0});
+var blush = [];
+[-1,1].forEach(function(s){
+  var b = add(head, new THREE.Mesh(new THREE.CircleGeometry(0.09,16), blushMat), s*0.31, -0.06, 0.28);
+  b.rotation.y = s*0.5;
+  b.castShadow = false;
+  blush.push(b);
+});
+
+// ---------------------------------------------------------------- 盾（指を追いかける主役）
+var SHOULDER_L = new THREE.Vector3(-0.40, 1.05, 0.18);
+var SHOULDER_R = new THREE.Vector3( 0.40, 1.05, 0.18);
+var ORBIT = 0.80;          // 頭の周りを回る半径
+var SHIELD_R = 0.40;       // 盾の見た目の半径
+
+var shield = new THREE.Group();
+dog.add(shield);
+var sPlate = add(shield, new THREE.Mesh(CYL, matShield), 0,0,0);
+sPlate.scale.set(SHIELD_R, 0.055, SHIELD_R);
+var sBoss = add(shield, new THREE.Mesh(SPH, matBoss), 0, 0.05, 0);
+sBoss.scale.set(0.15, 0.06, 0.15);
+var sRim = add(shield, new THREE.Mesh(new THREE.TorusGeometry(SHIELD_R, 0.035, 8, 28), matSteel), 0, 0.01, 0);
+sRim.rotation.x = Math.PI/2;
+
+// 剣
+var swordPivot = new THREE.Group();
+swordPivot.position.copy(SHOULDER_R);
+dog.add(swordPivot);
+var blade = add(swordPivot, new THREE.Mesh(new THREE.BoxGeometry(0.07,0.72,0.02), matSteel), 0.30, 0.46, 0.10);
+var guard = add(swordPivot, new THREE.Mesh(new THREE.BoxGeometry(0.24,0.05,0.05), matSteel), 0.30, 0.12, 0.10);
+var grip  = add(swordPivot, new THREE.Mesh(CYL, matWood), 0.30, 0.02, 0.10);
+grip.scale.set(0.035, 0.18, 0.035);
+
+// 腕＝肩から手先へ「引き伸ばした円柱」。これでリギング不要。
+var armL = add(dog, new THREE.Mesh(CYL, matFur), 0,0,0);
+var armR = add(dog, new THREE.Mesh(CYL, matFur), 0,0,0);
+var handL = add(dog, new THREE.Mesh(SPH, matCream), 0,0,0); handL.scale.setScalar(0.10);
+var handR = add(dog, new THREE.Mesh(SPH, matCream), 0,0,0); handR.scale.setScalar(0.10);
+
+var _up = new THREE.Vector3(0,1,0), _d = new THREE.Vector3();
+function stretchLimb(mesh, from, to, thick){
+  _d.subVectors(to, from);
+  var len = _d.length();
+  mesh.position.copy(from).add(to).multiplyScalar(0.5);
+  mesh.quaternion.setFromUnitVectors(_up, _d.normalize());
+  mesh.scale.set(thick, len, thick);
+}
+
+// ---------------------------------------------------------------- 入力（指の位置を平面に投影）
+var raycaster = new THREE.Raycaster();
+var ndc = new THREE.Vector2(0,0);
+var aimPlane = new THREE.Plane(new THREE.Vector3(0,0,1), -HEAD_POS.z);
+var pointerWorld = new THREE.Vector3(0, 1.45, HEAD_POS.z);
+var pointerPx = {x:innerWidth/2, y:innerHeight/2};
+var pointerActive = false;
+
+function updatePointer(e){
+  pointerPx.x = e.clientX; pointerPx.y = e.clientY;
+  ndc.x = (e.clientX/innerWidth)*2 - 1;
+  ndc.y = -(e.clientY/innerHeight)*2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  raycaster.ray.intersectPlane(aimPlane, pointerWorld);
+  pointerActive = true;
+}
+cv.addEventListener('pointermove', updatePointer);
+cv.addEventListener('pointerdown', function(e){ updatePointer(e); attempt(); });
+cv.addEventListener('pointerleave', function(){ pointerActive = false; });
+
+// ---------------------------------------------------------------- ゲーム状態
+var st = {
+  blocked:0, touched:0, wary:0,      // wary = けいかい度 0..1
+  shieldDir: new THREE.Vector3(0,0,1),
+  blockT:0, hitT:0, stunT:0, t:0
+};
+
+var elBlock = document.getElementById('sBlock');
+var elTouch = document.getElementById('sTouch');
+var elFill  = document.getElementById('meterfill');
+var elHint  = document.getElementById('hint');
+
+var WORD_BLOCK = ['ガッ！','ムッ','だめ','シャキン','ブロック！','させない'];
+var WORD_TOUCH = ['ぅゎ…','っ！','もふ','わふ…','♥'];
+
+function pop(text, color){
+  var d = document.createElement('div');
+  d.className = 'pop';
+  d.textContent = text;
+  d.style.color = color;
+  d.style.left = pointerPx.x + 'px';
+  d.style.top  = pointerPx.y + 'px';
+  document.body.appendChild(d);
+  setTimeout(function(){ d.remove(); }, 720);
+}
+function pick(a){ return a[(Math.random()*a.length)|0]; }
+
+var _sp = new THREE.Vector3(), _hp = new THREE.Vector3();
+function attempt(){
+  elHint.style.opacity = 0;
+
+  shield.getWorldPosition(_sp);
+  _hp.copy(HEAD_POS).add(dog.position);
+
+  var dShield = pointerWorld.distanceTo(_sp);
+  var dHead   = pointerWorld.distanceTo(_hp);
+
+  if (dShield < SHIELD_R + 0.14 && st.stunT <= 0){
+    // 盾に阻まれた
+    st.blocked++;
+    st.wary = Math.min(1, st.wary + 0.055);
+    st.blockT = 1;
+    elBlock.textContent = st.blocked;
+    pop(pick(WORD_BLOCK), '#e8792e');
+  } else if (dHead < 0.58){
+    // さわれた
+    st.touched++;
+    st.wary = Math.min(1, st.wary + 0.13);   // さわられると余計に警戒する
+    st.hitT = 1; st.stunT = 0.55;
+    elTouch.textContent = st.touched;
+    pop(pick(WORD_TOUCH), '#7ad39a');
+  } else {
+    pop('スカッ', '#ffffff70');
+  }
+  elFill.style.width = (st.wary*100).toFixed(0) + '%';
+}
+
+document.getElementById('bReset').addEventListener('click', function(){
+  st.blocked = st.touched = 0; st.wary = 0;
+  elBlock.textContent = '0'; elTouch.textContent = '0';
+  elFill.style.width = '0%';
+  elHint.style.opacity = 1;
+});
+
+// ---------------------------------------------------------------- カメラ背景（“AR風”を最小コストで）
+var camEl = document.getElementById('cam');
+var bCam = document.getElementById('bCam');
+var camOn = false;
+bCam.addEventListener('click', function(){
+  if (camOn){
+    var s = camEl.srcObject;
+    if (s) s.getTracks().forEach(function(t){ t.stop(); });
+    camEl.srcObject = null; camEl.style.display = 'none';
+    scene.background = SKY;
+    bCam.classList.remove('on'); camOn = false;
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false})
+    .then(function(stream){
+      camEl.srcObject = stream;
+      camEl.style.display = 'block';
+      camEl.style.transform = 'none';
+      scene.background = null;          // canvasを透過して映像を透かす
+      bCam.classList.add('on'); camOn = true;
+    })
+    .catch(function(){ bCam.textContent = 'カメラ使用不可'; });
+});
+
+// ---------------------------------------------------------------- ループ（動きは全部プロシージャル）
+var clock = new THREE.Clock();
+var _target = new THREE.Vector3();
+var _shPos = new THREE.Vector3();
+var _handL = new THREE.Vector3();
+
+function tick(){
+  var dt = Math.min(clock.getDelta(), 0.05);
+  st.t += dt;
+
+  st.blockT = Math.max(0, st.blockT - dt*3.2);
+  st.hitT   = Math.max(0, st.hitT   - dt*1.6);
+  st.stunT  = Math.max(0, st.stunT  - dt);
+  st.wary   = Math.max(0, st.wary - dt*0.018);   // 時間で少し落ち着く
+
+  // --- 盾: 頭を中心に、指のいる方向へ回り込む。追従の“遅れ”がそのままゲーム性
+  _target.subVectors(pointerWorld, HEAD_POS);
+  if (_target.lengthSq() < 1e-5) _target.set(0,0,1);
+  _target.normalize();
+  _target.z = Math.max(_target.z, 0.28);          // 常に手前寄りに構える
+  _target.normalize();
+
+  var follow = st.stunT > 0 ? 0.4 : (2.6 + st.wary*5.5);   // けいかい度で速くなる
+  st.shieldDir.lerp(_target, 1 - Math.exp(-follow*dt)).normalize();
+
+  var punch = st.blockT * 0.16;                    // ブロック時に前へ突き出す
+  var droop = st.stunT > 0 ? -0.30 : 0;            // さわられた直後は盾が下がる
+  _shPos.copy(st.shieldDir).multiplyScalar(ORBIT + punch)
+        .add(HEAD_POS).add(new THREE.Vector3(0, droop, 0));
+  shield.position.copy(_shPos);
+  shield.quaternion.setFromUnitVectors(_up, st.shieldDir);
+  shield.rotateY(st.t*0.6 + st.blockT*4);
+
+  // --- 腕: 肩 → 手先 を円柱で結ぶだけ
+  _handL.copy(_shPos).addScaledVector(st.shieldDir, -0.10);
+  stretchLimb(armL, SHOULDER_L, _handL, 0.075);
+  handL.position.copy(_handL);
+
+  // --- 剣: 待機はゆらゆら、ブロック時に威嚇スイング
+  swordPivot.rotation.z = -0.25 + Math.sin(st.t*1.7)*0.06 - st.blockT*1.5;
+  swordPivot.rotation.x = st.blockT*0.5;
+  swordPivot.updateMatrixWorld(true);
+  grip.getWorldPosition(_handL);
+  dog.worldToLocal(_handL);
+  stretchLimb(armR, SHOULDER_R, _handL, 0.075);
+  handR.position.copy(_handL);
+
+  // --- 体: 指と逆へ逃げる ＋ 呼吸
+  var away = -st.shieldDir.x * (0.10 + st.wary*0.10);
+  dog.position.x += (away - dog.position.x) * (1 - Math.exp(-6*dt));
+  dog.rotation.z += ((st.shieldDir.x*0.10) - dog.rotation.z) * (1 - Math.exp(-6*dt));
+  var breathe = Math.sin(st.t*2.4)*0.012;
+  body.scale.set(0.52+breathe, 0.47-breathe, 0.6);
+  dog.position.y = st.blockT*0.05 + Math.abs(Math.sin(st.t*2.4))*0.008;
+
+  // --- 頭: 指を目で追う
+  var yaw = THREE.MathUtils.clamp((pointerWorld.x - dog.position.x)*0.35, -0.5, 0.5);
+  var pit = THREE.MathUtils.clamp((HEAD_POS.y - pointerWorld.y)*0.35, -0.35, 0.35);
+  head.rotation.y += (yaw - head.rotation.y) * (1 - Math.exp(-9*dt));
+  head.rotation.x += (pit - head.rotation.x) * (1 - Math.exp(-9*dt));
+  head.position.y = HEAD_POS.y + st.hitT*0.03*Math.sin(st.t*40);   // さわられてビクッ
+
+  // --- しっぽ: 警戒するほど速く振る
+  tail.rotation.z = Math.sin(st.t*(3 + st.wary*9))*0.5;
+  tail.rotation.x = -0.5;
+
+  // --- ほっぺ
+  blushMat.opacity = st.hitT * 0.85;
+
+  // --- 目: 警戒すると細める
+  var sq = 1 - st.wary*0.45;
+  eyes.forEach(function(e){ e.scale.set(1, sq, 1); });
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+resize();
+tick();
+})();
+</script>
+</body>
+</html>
