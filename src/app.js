@@ -244,6 +244,25 @@ load('models/shield.glb', (root) => {
   shieldPivot.add(root);
 });
 
+// ---------------------------------------------------------------- 垂直の基準棒
+// カード面に対してまっすぐ立てた棒。キャラが傾いて見える原因を切り分けるための
+// 一時的な目印で、確認できたら消す。
+//   棒は真っ直ぐでキャラだけ傾く → モデルの姿勢の問題
+//   棒も一緒に傾く               → カード面の解釈がこちらの間違い
+const poleMat = new THREE.MeshBasicMaterial({color:0x00ff88});
+const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.0, 8), poleMat);
+pole.position.y = 1.0;
+const poleRoot = new THREE.Group();
+poleRoot.add(pole);
+// 足元に敷く十字。カード面と平行かどうかを見る。
+const barGeo = new THREE.BoxGeometry(1.6, 0.02, 0.08);
+const barMat = new THREE.MeshBasicMaterial({color:0xff3355});
+const barA = new THREE.Mesh(barGeo, barMat);
+const barB = new THREE.Mesh(barGeo, barMat);
+barB.rotation.y = Math.PI/2;
+poleRoot.add(barA, barB);
+stand.add(poleRoot);
+
 // ---------------------------------------------------------------- モーション
 // models/anim/ に置いたクリップがあれば、骨を数式で回すのをやめてそちらを再生する。
 // 無ければ今までどおり数式で動く。ファイルが増えたら勝手に切り替わる。
@@ -820,6 +839,8 @@ function update(){
     STAND_Z + st.guard*0.10 + cc*0.16 - ww*0.05
   );
   const grow = baseScale;
+  poleRoot.position.set(chara.position.x, 0.01, chara.position.z);
+  poleRoot.scale.setScalar(baseScale);
   blob.position.set(chara.position.x, 0.004, chara.position.z);
   blob.scale.setScalar(grow * 1.45);
   chara.scale.set(grow*(1-breathe*0.5), grow*(1+breathe+roarU*0.05), grow*(1-breathe*0.5));
