@@ -42,9 +42,16 @@ const anchor = mindar.addAnchor(0);
 // アンカーはカード面が XY、+Z がカードの外向き。X を +90° 回すと
 // キャラの Y-up がカードの法線に揃い、以降は素直な Y-up 空間で書ける。
 // 単位はカードの横幅＝1（実物のルイーズは 59mm 幅）。
+// 一度出たら出たままにする。アンカーの子にすると見失った瞬間に消えるので、
+// 場面へ直接置き、カードが見えている間だけその姿勢を写し取る。
+// 見失ったら最後の姿勢のまま、その場に留まる。
+const world = new THREE.Group();
+scene.add(world);
+let everFound = false;
+
 const stand = new THREE.Group();
 stand.rotation.x = Math.PI/2;
-anchor.group.add(stand);
+world.add(stand);
 
 const chara = new THREE.Group();      // 立ち位置と向きを持つ入れ物
 stand.add(chara);
@@ -207,15 +214,14 @@ stand.add(spawnRing);
 
 let found = false, spawnT = 0;
 anchor.onTargetFound = () => {
-  found = true; spawnT = 0; dbg.hits++;
-  scan.classList.add('gone');
+  found = true; dbg.hits++;
+  if (!everFound) spawnT = 0;     // 出てくる演出は最初の一度だけ
+  scan.classList.add('gone');     // 一度見つけたら案内は二度と出さない
   acts.classList.add('on');
   loadHands();                    // 見つかってから読む。走査中の負荷を上げない。
 };
 anchor.onTargetLost = () => {
-  found = false;
-  scan.classList.remove('gone');
-  acts.classList.remove('on');
+  found = false;                  // 姿勢の更新は止まるが、その場に残る
 };
 
 // ---------------------------------------------------------------- 手の検出
@@ -500,7 +506,14 @@ function update(){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
 
-  if (found && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
+  // カードが見えている間だけ姿勢を写す。見失っても最後の姿勢のまま留まる。
+  if (found){
+    anchor.group.updateWorldMatrix(true, false);
+    anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
+    everFound = true;
+  }
+  world.visible = everFound;
+  if (everFound && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
   st.swing  = Math.max(0, st.swing  - dt*2.6);
   st.roar   = Math.max(0, st.roar   - dt*1.5);
@@ -516,7 +529,7 @@ function update(){
 
   // --- カードから出てくる
   const e = 1 - Math.pow(1 - spawnT, 3);
-  chara.visible = found;   // 見つけたら必ず出す。演出の途中で消える余地を作らない。
+  chara.visible = everFound;   // 一度出たら消さない
   spawnRing.visible = spawnT > 0 && spawnT < 1;
   if (spawnRing.visible){
     spawnRing.scale.setScalar(0.4 + spawnT*2.2);
