@@ -574,8 +574,95 @@ const endPointer = e => {
 touch.addEventListener('pointerup', endPointer);
 touch.addEventListener('pointercancel', endPointer);
 
+// ---------------------------------------------------------------- 動画の記録
+// カメラ映像は <video>、キャラは別のキャンバスに描かれている。片方を録っても
+// 意味がないので、毎フレーム両方を1枚に描き直し、それを録る。
+const grec = $('grec'), stopBtn = $('aStop');
+let rec = null, recChunks = [], recCanvas = null, recCtx = null, recExt = 'mp4';
+
+const REC_TYPES = [
+  'video/mp4;codecs=avc1.42E01E',
+  'video/mp4',
+  'video/webm;codecs=vp9',
+  'video/webm;codecs=vp8',
+  'video/webm'
+];
+function pickType(){
+  if (typeof MediaRecorder === 'undefined') return null;
+  for (const t of REC_TYPES) if (MediaRecorder.isTypeSupported(t)) return t;
+  return '';
+}
+{
+  const t = pickType();
+  if (t === null) grec.style.display = 'none';                 // 記録できない端末
+  else if (t.indexOf('mp4') < 0) grec.textContent = '記録してはじめる（WebM）';
+}
+
+function startRec(){
+  const type = pickType();
+  if (type === null) return;
+  recExt = (type && type.indexOf('mp4') >= 0) ? 'mp4' : 'webm';
+  const cv = renderer.domElement;
+  recCanvas = document.createElement('canvas');
+  // 長辺 1080 まで。これ以上はスマホだと落ちるだけで見た目は変わらない。
+  const k = Math.min(1, 1080 / Math.max(cv.width, cv.height));
+  recCanvas.width  = Math.max(2, Math.round(cv.width  * k / 2) * 2);   // 偶数にする
+  recCanvas.height = Math.max(2, Math.round(cv.height * k / 2) * 2);
+  recCtx = recCanvas.getContext('2d');
+  recChunks = [];
+  try {
+    rec = new MediaRecorder(recCanvas.captureStream(30),
+      type ? { mimeType: type, videoBitsPerSecond: 8000000 } : undefined);
+  } catch(e){ rec = null; dbg.err = '記録できません: ' + (e.message || e); renderDbg(); return; }
+  rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+  rec.onstop = saveRec;
+  rec.start(1000);
+  stopBtn.hidden = false;
+}
+
+function drawRec(){
+  if (!recCtx) return;
+  const cv = renderer.domElement, W = recCanvas.width, H = recCanvas.height;
+  recCtx.fillStyle = '#000';
+  recCtx.fillRect(0, 0, W, H);
+  const v = mindar.video;
+  if (v && v.videoWidth){
+    // 画面に映っているのと同じ位置・大きさで敷く。video は画面より大きく
+    // はみ出して置かれているので、その差を測って合わせる。
+    const r = v.getBoundingClientRect(), host = cv.getBoundingClientRect();
+    if (host.width > 0 && host.height > 0){
+      const sx = W / host.width, sy = H / host.height;
+      recCtx.drawImage(v, (r.left - host.left) * sx, (r.top - host.top) * sy,
+                          r.width * sx, r.height * sy);
+    }
+  }
+  recCtx.drawImage(cv, 0, 0, W, H);
+}
+
+function saveRec(){
+  stopBtn.hidden = true;
+  const blob = new Blob(recChunks, { type: recChunks.length ? recChunks[0].type : 'video/' + recExt });
+  recChunks = []; rec = null; recCtx = null; recCanvas = null;
+  if (!blob.size) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  a.href = url;
+  a.download = 'rouise-' + d.getFullYear() + p2(d.getMonth()+1) + p2(d.getDate()) +
+               '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.' + recExt;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+stopBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (rec && rec.state !== 'inactive') rec.stop();
+});
+
 // ---------------------------------------------------------------- 起動
-function boot(){
+function boot(record){
   if (gate.dataset.busy) return;
   gate.dataset.busy = '1';
   tapme.textContent = 'カメラを起動しています…';
@@ -598,6 +685,7 @@ function boot(){
     gate.classList.add('gone');
     setTimeout(() => { gate.style.display = 'none'; }, 520);
     renderer.setAnimationLoop(tick);
+    if (record) startRec();
   }).catch(err => {
     dbg.err = (err && err.message) || String(err); renderDbg();
     tapme.style.display = 'none';
@@ -607,7 +695,8 @@ function boot(){
     gate.dataset.busy = '';
   });
 }
-gate.addEventListener('click', boot);
+gate.addEventListener('click', () => boot(false));
+grec.addEventListener('click', e => { e.stopPropagation(); boot(true); });
 
 // ---------------------------------------------------------------- ループ
 const clock = new THREE.Clock();
@@ -697,6 +786,7 @@ function tick(){
   }
   renderer.render(scene, camera);
   drawOcclusion();
+  if (rec && rec.state === 'recording') drawRec();
   if (dbg.frames % 20 === 0) renderDbg();
 }
 
