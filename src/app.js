@@ -213,6 +213,7 @@ load('models/rouise.glb', (root) => {
     }
   });
   rigged = !!(bones.RightArm && bones.LeftArm);
+  loadAnims(root);
   console.log('[rig] ボーン ' + Object.keys(bones).length + '本, 使用可: ' + rigged);
 
   // 武器は手のボーンの子にする。これで腕の動きに完全に追従する。
@@ -233,6 +234,79 @@ load('models/shield.glb', (root) => {
   root.rotation.y = Math.PI/2;     // 面を体の外へ向ける
   shieldPivot.add(root);
 });
+
+// ---------------------------------------------------------------- モーション
+// models/anim/ に置いたクリップがあれば、骨を数式で回すのをやめてそちらを再生する。
+// 無ければ今までどおり数式で動く。ファイルが増えたら勝手に切り替わる。
+//
+// Mixamo は骨名がこのリグと同じ規則なので、書き出したものがそのまま乗る。
+// ただし軌道の名前に接頭辞が付き、位置の単位も揃わないことがあるため、
+// 骨名だけを取り出して結び直し、回転の軌道だけを使う。移動は捨てる。
+// 位置まで拾うとキャラがカードの外へ歩き出す。
+const ANIM_FILES = { idle:'idle', attack:'attack', guard:'guard', roar:'roar' };
+const actions = {};
+let mixer = null, idleAction = null;
+
+function retarget(clip, boneNames){
+  clip.tracks = clip.tracks.filter(t => {
+    const dot = t.name.lastIndexOf('.');
+    if (dot < 0) return false;
+    const prop = t.name.slice(dot + 1);
+    if (prop !== 'quaternion') return false;          // 回転だけ使う
+    const seg = t.name.slice(0, dot).split(/[|:/]/).pop();
+    if (!boneNames.has(seg)) return false;
+    t.name = seg + '.' + prop;
+    return true;
+  });
+  return clip;
+}
+
+function loadAnims(root){
+  const boneNames = new Set(Object.keys(bones));
+  if (!boneNames.size) return;
+  mixer = new THREE.AnimationMixer(root);
+
+  mixer.addEventListener('finished', (ev) => {
+    if (idleAction && ev.action !== idleAction && ev.action !== actions.guard){
+      idleAction.reset().fadeIn(0.2).play();
+      ev.action.fadeOut(0.2);
+    }
+  });
+
+  Object.keys(ANIM_FILES).forEach(role => {
+    const url = 'models/anim/' + ANIM_FILES[role] + '.glb';
+    new GLTFLoader().load(url, (g) => {
+      const clip = g.animations && g.animations[0];
+      if (!clip) return;
+      retarget(clip, boneNames);
+      if (!clip.tracks.length){ console.warn('[anim] 骨が合いません:', role); return; }
+      const a = mixer.clipAction(clip);
+      actions[role] = a;
+      if (role === 'idle'){
+        idleAction = a;
+        a.setLoop(THREE.LoopRepeat, Infinity).play();
+      } else if (role === 'guard'){
+        a.setLoop(THREE.LoopRepeat, Infinity);
+        a.setEffectiveWeight(0);
+        a.play();
+      } else {
+        a.setLoop(THREE.LoopOnce, 1);
+        a.clampWhenFinished = true;
+      }
+      console.log('[anim] 読み込み:', role, clip.tracks.length + '軌道');
+    }, undefined, () => { /* 無ければ数式のまま */ });
+  });
+}
+
+function playAction(role){
+  const a = actions[role];
+  if (!a) return false;
+  a.reset();
+  a.setEffectiveWeight(1);
+  a.fadeIn(0.1).play();
+  if (idleAction) idleAction.fadeOut(0.1);
+  return true;
+}
 
 // ---------------------------------------------------------------- エフェクト
 const slash = new THREE.Mesh(
@@ -408,8 +482,8 @@ const st = { t:0, swing:0, roar:0, guard:0, guardTarget:0, shakeT:0, autoCd:0 };
 const FACE_TRIM = 0;   // 正面の微調整（ラジアン）。ずれが残ればここだけ動かす。
 let btnGuard = 0;   // 盾ボタン
 
-const doSword = () => { st.swing = 1; st.shakeT = 0.18; };
-const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; };
+const doSword = () => { st.swing = 1; st.shakeT = 0.18; playAction('attack'); };
+const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; playAction('roar'); };
 const guardOn = () => { btnGuard = 1; };
 const guardOff = () => { btnGuard = 0; };
 const flash = b => { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 130); };
@@ -586,7 +660,13 @@ function update(){
   if (!Number.isFinite(baseScale) || baseScale <= 0) baseScale = BASE_SCALE;
   chara.rotation.y = FACE_YAW + FACE_TRIM;
 
-  if (rigged){
+  const clipDriven = !!(actions.attack || actions.guard || actions.roar || idleAction);
+  if (mixer){
+    // 盾は押している間ずっとなので、重みで出し入れする
+    if (actions.guard) actions.guard.setEffectiveWeight(st.guard);
+    mixer.update(dt);
+  }
+  if (rigged && !clipDriven){
     // --- ボーンを直接回す。武器は手のボーンの子なので勝手に付いてくる。
     // 技どうしが同じ骨を取り合うので、骨ごとに角度を足し合わせてから一度だけ渡す。
     chara.getWorldQuaternion(_cq);
