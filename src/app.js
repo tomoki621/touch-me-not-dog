@@ -484,12 +484,16 @@ function drawOcclusion(){
 // 握り位置から生えたまま角度だけ変わるので、分離して浮くことはない。
 const st = { t:0, swing:0, roar:0, guard:0, guardTarget:0, shakeT:0, autoCd:0 };
 const FACE_TRIM = 0;   // 正面の微調整（ラジアン）。ずれが残ればここだけ動かす。
-let btnGuard = 0;   // 盾ボタン
+let guardHeld = false;    // 盾ボタンを押しているか
+let poseDelay = 0;        // 押してから構えに入るまでの残り
+let freezeT = 0;          // 離してからも留まる残り
+const GUARD_IN = 2.0;     // 固定してから構えるまでの間
+const GUARD_OUT = 2.0;    // 構えを解いてから追従に戻るまでの間
 
 const doSword = () => { st.swing = 1; st.shakeT = 0.18; playAction('attack'); };
 const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; playAction('roar'); };
-const guardOn = () => { btnGuard = 1; };
-const guardOff = () => { btnGuard = 0; };
+const guardOn = () => { if (!guardHeld){ guardHeld = true; poseDelay = GUARD_IN; } };
+const guardOff = () => { if (guardHeld){ guardHeld = false; freezeT = GUARD_OUT; } };
 const flash = b => { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 130); };
 
 $('aSword').addEventListener('click', doSword);
@@ -609,6 +613,12 @@ function update(){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
 
+  // 盾ボタン。押したら即その場に固定し、少し置いてから構える。
+  // 離したら構えを解き、そのままもう少し留まってから追従に戻る。
+  if (guardHeld) poseDelay = Math.max(0, poseDelay - dt);
+  else           freezeT  = Math.max(0, freezeT  - dt);
+  const frozen = guardHeld || freezeT > 0;
+
   if (found){
     everFound = true;
     anchor.group.updateWorldMatrix(true, false);
@@ -617,7 +627,7 @@ function update(){
     for (let i = 0; i < 16; i++) if (!Number.isFinite(m[i])) ok = false;
     // 防御中はカードの姿勢を写さない。カードを回そうが動かそうが、
     // 押した瞬間の場所に踏みとどまって構え続ける。
-    if (ok && !btnGuard) anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
+    if (ok && !frozen) anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
 
     // カードの面内の回転だけを測る。カードを回す操作は攻守の切り替えであって、
     // キャラを動かす操作ではない。回した分をあとで打ち消して、その場に留める。
@@ -648,7 +658,9 @@ function update(){
   }
 
   // 面内の回転を打ち消す。stand.rotation は X→Y→Z の順なので Y が法線まわり。
-  if (baseSnap !== null){
+  // ここも固定中は触らない。位置だけ止めても、この回転が生きていると
+  // カードを回した分だけキャラが回ってしまう。
+  if (baseSnap !== null && !frozen){
     const rel = (((snapIdx - baseSnap) % 4) + 4) % 4;
     let ds = -rel * (Math.PI/2) - stand.rotation.y;
     while (ds >  Math.PI) ds -= Math.PI*2;
@@ -660,7 +672,7 @@ function update(){
 
   // 盾はボタンだけで決める。カードの傾きから守備表示を読む仕組みは、
   // 傾きの推定が揺れて姿勢が落ち着かなかったので外した。
-  st.guardTarget = btnGuard;
+  st.guardTarget = (guardHeld && poseDelay <= 0) ? 1 : 0;
 
   // 手が近づいたら自動で斬る
   st.autoCd = Math.max(0, st.autoCd - dt);
