@@ -407,7 +407,7 @@ function drawOcclusion(){
 // リグが無いので腕は動かない。剣と盾は握りを支点に回し、体は全身で演技する。
 // 握り位置から生えたまま角度だけ変わるので、分離して浮くことはない。
 const st = { t:0, swing:0, roar:0, guard:0, guardTarget:0, shakeT:0, autoCd:0 };
-let charaYaw = 0;   // 2本指のひねりで足す向きの調整ぶん
+const FACE_TRIM = 0;   // 正面の微調整（ラジアン）。ずれが残ればここだけ動かす。
 let btnGuard = 0;   // 盾ボタン
 let cardAngle = 0;  // カードの傾き（0=縦置き、±90°=横置き）
 let sideways = 0;   // 1なら横置き＝守備表示
@@ -436,10 +436,9 @@ addEventListener('keyup', e => { if (e.key === '1') guardOff(); });
 // ---------------------------------------------------------------- 大きさと向き
 // 位置と接地はカードが決めるので、残る調整はこの2つだけ。ボタンは増やさない。
 const pointers = new Map();
-let pinchDist0 = 0, pinchScale0 = BASE_SCALE, twistPrev = 0;
+let pinchDist0 = 0, pinchScale0 = BASE_SCALE;
 const twoP = () => [...pointers.values()];
 const pinchDistance = () => { const p = twoP(); return p.length<2 ? 0 : Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y); };
-const pinchAngle    = () => { const p = twoP(); return p.length<2 ? 0 : Math.atan2(p[1].y-p[0].y, p[1].x-p[0].x); };
 
 touch.addEventListener('pointerdown', e => {
   touch.setPointerCapture(e.pointerId);
@@ -447,20 +446,15 @@ touch.addEventListener('pointerdown', e => {
   if (pointers.size === 2){
     pinchDist0 = pinchDistance();
     pinchScale0 = baseScale;
-    twistPrev = pinchAngle();
   }
 });
 touch.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
   if (pointers.size < 2 || !pinchDist0) return;
+  // 大きさだけ。向きはカードが決めるので、手で回す操作は置かない。
+  // 画面全体が受け付けるため、持ち方次第で意図せず回ってしまっていた。
   baseScale = THREE.MathUtils.clamp(pinchScale0 * (pinchDistance()/pinchDist0), 0.3, 4);
-  const a = pinchAngle();
-  let dA = a - twistPrev;                          // -PI..PI に畳んでから積む
-  while (dA >  Math.PI) dA -= Math.PI*2;
-  while (dA < -Math.PI) dA += Math.PI*2;
-  charaYaw -= dA;
-  twistPrev = a;
 });
 const endPointer = e => {
   pointers.delete(e.pointerId);
@@ -623,9 +617,8 @@ function update(){
   // --- 向きはカードに対して固定する。カメラや手を追わせると、立ち位置や
   // 撮る角度によって毎回ちがう方を向いてしまう。カードの下辺側（印刷を読む人が
   // いる側）を正面として構えさせ、ひねりの手動調整ぶんだけを足す。
-  if (!Number.isFinite(charaYaw)) charaYaw = 0;
   if (!Number.isFinite(baseScale) || baseScale <= 0) baseScale = BASE_SCALE;
-  chara.rotation.y = FACE_YAW + charaYaw;
+  chara.rotation.y = FACE_YAW + FACE_TRIM;
 
   if (rigged){
     // --- ボーンを直接回す。武器は手のボーンの子なので勝手に付いてくる。
