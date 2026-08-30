@@ -20,6 +20,22 @@ function renderDbg(){
   if (msg) dbgEl.textContent = msg;
 }
 
+// ---------------------------------------------------------------- カメラの解像度
+// MindAR は解像度を指定せずにカメラを開くため、端末が低い既定値（480x640）を
+// 返してくることがある。カードの模様から特徴点を拾って照合する方式では、
+// 解像度と鮮明さがそのまま追跡の安定性と再検出の可否に直結する。要求を上書きする。
+const _gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+navigator.mediaDevices.getUserMedia = (c) => _gum({
+  audio: false,
+  video: Object.assign({ facingMode: 'environment' },
+                       (c && typeof c.video === 'object') ? c.video : null,
+                       { width: {ideal: 1920}, height: {ideal: 1080} })
+}).then(st => {
+  const t = st.getVideoTracks()[0];
+  if (t) console.log('[camera]', JSON.stringify(t.getSettings()));
+  return st;
+});
+
 // ---------------------------------------------------------------- AR
 // カードが位置・向き・実寸のすべてを教えてくれる。ジャイロで水平を推測し、
 // 画角を決め打ちし、手で配置していた妥協が、ここで全部要らなくなる。
