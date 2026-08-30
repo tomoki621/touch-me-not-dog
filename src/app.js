@@ -137,7 +137,9 @@ const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
 const SWORD_LEN  = 1.45;      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
 const SHIELD_LEN = 1.25;
 const SWORD_GRIP = 0.20;      // 柄の中ほどを握る
-const SHIELD_PUSH = 0.34;   // 盾を面の側へ逃がす量。守備で顔がめり込むので深めに。     // 盾を手から外へ逃がす量。拳が面から出ないように。
+const SHIELD_PUSH = 0.34;
+const GRIP_OUT  = 0.085;   // 手首から拳へずらす量。骨は手首にあるので、そのままだと刺さる。
+const SHIELD_OUT = 0.055;   // 盾を面の側へ逃がす量。守備で顔がめり込むので深めに。     // 盾を手から外へ逃がす量。拳が面から出ないように。
 const LEAN_FIX = 0.060;       // モデル自体が3.4度うしろに傾いているのを起こす
 const FOOT_SINK = -0.05;      // 足を面に少し埋める。ぴったり0だと浮いて見える。
 
@@ -577,6 +579,20 @@ const clock = new THREE.Clock();
 const _camLocal = new THREE.Vector3(), _handW = new THREE.Vector3();
 const _v3 = new THREE.Vector3(), _cardUp = new THREE.Vector3();
 const _qh = new THREE.Quaternion(), _qc = new THREE.Quaternion();
+const _qh2 = new THREE.Quaternion(), _ws = new THREE.Vector3();
+const _pA = new THREE.Vector3(), _pB = new THREE.Vector3();
+function gripShift(handName, foreName, pivot, dist){
+  const hb = bones[handName], fb = bones[foreName];
+  if (!hb || !fb) return;
+  hb.getWorldPosition(_pA); fb.getWorldPosition(_pB);
+  _v3.subVectors(_pA, _pB);
+  if (_v3.lengthSq() < 1e-9) return;
+  _v3.normalize().multiplyScalar(dist);
+  hb.getWorldQuaternion(_qh2).invert();
+  _v3.applyQuaternion(_qh2);
+  hb.getWorldScale(_ws);
+  pivot.position.set(_v3.x/(_ws.x||1), _v3.y/(_ws.y||1), _v3.z/(_ws.z||1));
+}
 const _q2 = new THREE.Quaternion(), _e2 = new THREE.Euler();
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
@@ -741,13 +757,12 @@ function update(){
     const g = st.guard, r = roarU;
     const u = swingU;
 
-    // 斬撃は三段に分ける。ためて、打ち抜いて、ゆっくり戻す。
-    // 山なりの一本調子だと打点が定まらず、振っているように見えない。
-    const wind = u < 0.35 ? Math.sin(u/0.35 * Math.PI/2)          // 0→1 ためる
-                          : Math.max(0, 1 - (u-0.35)/0.15);       // 一気に解く
-    const chop = u < 0.35 ? 0
-               : u < 0.55 ? Math.sin((u-0.35)/0.20 * Math.PI/2)   // 0→1 打ち抜く
-                          : Math.max(0, 1 - (u-0.55)/0.45);       // ゆっくり戻す
+    // 軽く斜めに払う。大振りの振りかぶりはやめ、小さくためてすっと抜く。
+    const wind = u < 0.22 ? Math.sin(u/0.22 * Math.PI/2)
+                          : Math.max(0, 1 - (u-0.22)/0.12);
+    const chop = u < 0.22 ? 0
+               : u < 0.48 ? Math.sin((u-0.22)/0.26 * Math.PI/2)
+                          : Math.max(0, 1 - (u-0.48)/0.52);
     const on = st.swing > 0.001 ? 1 : 0;
     const w = on*wind, c = on*chop;
 
@@ -755,16 +770,17 @@ function update(){
     // ここを取り違えて全部反対に入れていたので、以下は意図を明記しておく。
 
     // 右腕。ためで肩の上へ担ぎ（後ろ＝正）、打ち抜きで前へ振り下ろす（前＝負）。
+    // 斜めに払う。上下は控えめ、外から内への成分を主にする。
     boneSet('RightArm', [
-      [1,0,0, -1.90*w + 2.60*c - r*0.25],
-      [0,0,1, -0.70*w + 1.25*c - r*0.72],
-      [0,1,0,  0.40*w - 0.55*c + r*0.18]
+      [1,0,0, -0.75*w + 1.05*c - r*0.25],
+      [0,0,1, -0.55*w + 1.30*c - r*0.72],
+      [0,1,0,  0.25*w - 0.70*c + r*0.18]
     ]);
     // 開くのは肩から。腕の骨だけを大きくひねると関節が外れて見える。
-    boneSet('RightShoulder', [[0,0,1, -r*0.34], [0,1,0, r*0.12]]);
-    boneSet('LeftShoulder',  [[0,0,1,  r*0.34], [0,1,0, -r*0.12], [1,0,0, -g*0.30]]);
+    boneSet('RightShoulder', [[0,0,1, -r*0.18], [0,1,0, r*0.12]]);   // 上げすぎると頭が埋まる
+    boneSet('LeftShoulder',  [[0,0,1,  r*0.18], [0,1,0, -r*0.12], [1,0,0, -g*0.30]]);
     boneSet('RightForeArm', [
-      [1,0,0, -1.20*w + 1.50*c - r*0.20],   // 前腕は遅れて畳み、遅れて伸びる
+      [1,0,0, -0.55*w + 0.80*c - r*0.20],   // 前腕は遅れて畳み、遅れて伸びる
       [0,0,1, -0.30*w + 0.45*c + r*0.18]
     ]);
 
@@ -796,6 +812,12 @@ function update(){
     // 体の空間で向きを決め、手の骨の回転を打ち消して実現する。位置は手に付いて回る。
     chara.updateMatrixWorld(true);   // 骨を回した直後なので、行列を作り直してから使う
     chara.getWorldQuaternion(_qc);
+
+    // 手のボーンは拳ではなく手首にある。そのまま武器を置くと手首に刺さって見える。
+    // 前腕から手へ伸びる向きへ少しずらし、拳の中に柄が来るようにする。
+    // 向きは骨の位置から出るので、当てずっぽうにならない。
+    gripShift('RightHand', 'RightForeArm', swordPivot,  GRIP_OUT);
+    gripShift('LeftHand',  'LeftForeArm',  shieldPivot, SHIELD_OUT);
     if (bones.RightHand){
       // 刀身はモデルの +Y。正で前へ倒れる。立て気味に構え、後ろへ担ぎ、前へ斬る。
       // 立てて構える。ためで後ろへ担ぎ、打ち抜きで前へ振り下ろす。
@@ -815,9 +837,9 @@ function update(){
 
     // 首と頭。正で上を向く。守備では首をすくめ、咆哮では天を仰ぎ、
     // 斬るときは打点を見下ろす。
-    boneSet('neck', [[1,0,0, g*0.18 - r*0.20]]);
+    boneSet('neck', [[1,0,0, g*0.18 - r*0.42]]);
     boneSet('Head', [
-      [1,0,0, HEAD_UP - r*0.50 + g*0.95 + c*0.20 - w*0.12],   // 守備では深くうつむく
+      [1,0,0, HEAD_UP - r*0.95 + g*0.95 + c*0.20 - w*0.12],   // 咆哮で天を仰ぎ、守備で深くうつむく
       [0,1,0, 0.22*w - 0.30*c]
     ]);
   } else {
@@ -871,8 +893,8 @@ function update(){
     _handW.setFromMatrixPosition(camera.matrixWorld);
     stand.worldToLocal(_handW);
     shock.lookAt(_handW);
-    shock.scale.setScalar(grow * (0.5 + (1-st.roar)*2.6));
-    shock.material.opacity = st.roar*0.7;
+    shock.scale.setScalar(grow * (0.4 + (1-st.roar)*3.4));
+    shock.material.opacity = Math.min(1, st.roar*1.6)*0.85;
   }
 
 }
