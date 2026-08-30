@@ -581,6 +581,25 @@ const _v3 = new THREE.Vector3(), _cardUp = new THREE.Vector3();
 const _qh = new THREE.Quaternion(), _qc = new THREE.Quaternion();
 const _qh2 = new THREE.Quaternion(), _ws = new THREE.Vector3();
 const _pA = new THREE.Vector3(), _pB = new THREE.Vector3();
+const _dA = new THREE.Vector3(), _dB = new THREE.Vector3();
+const _dC = new THREE.Vector3(), _dir = new THREE.Vector3();
+const _upY = new THREE.Vector3(0, 1, 0);
+// 骨の節を、指定した向きへ向ける。chara 空間は +X=キャラの左、+Y=上、+Z=正面。
+// 角度の符号を積み上げると取り違えるので、向きそのものをベクトルで書く。
+const _dirW = new THREE.Vector3(), _q3 = new THREE.Quaternion(), _qp = new THREE.Quaternion();
+function aimBone(name, childName, dir){
+  const b = bones[name], c = bones[childName];
+  if (!b || !c) return;
+  b.getWorldPosition(_pA); c.getWorldPosition(_pB);
+  _v3.subVectors(_pB, _pA);
+  if (_v3.lengthSq() < 1e-9) return;
+  _v3.normalize();
+  _dirW.copy(dir).normalize().applyQuaternion(_qc);      // chara 空間 → ワールド
+  _q3.setFromUnitVectors(_v3, _dirW);                    // ワールドでの補正
+  b.parent.getWorldQuaternion(_qp);
+  b.quaternion.premultiply(_qp.clone().invert().multiply(_q3).multiply(_qp));
+}
+
 function gripShift(handName, foreName, pivot, dist){
   const hb = bones[handName], fb = bones[foreName];
   if (!hb || !fb) return;
@@ -770,19 +789,12 @@ function update(){
     // ここを取り違えて全部反対に入れていたので、以下は意図を明記しておく。
 
     // 右腕。ためで肩の上へ担ぎ（後ろ＝正）、打ち抜きで前へ振り下ろす（前＝負）。
-    // 斜めに払う。上下は控えめ、外から内への成分を主にする。
-    boneSet('RightArm', [
-      [1,0,0, -0.75*w + 1.05*c - r*0.25],
-      [0,0,1, -0.55*w + 1.30*c - r*0.72],
-      [0,1,0,  0.25*w - 0.70*c + r*0.18]
-    ]);
+    // 右腕は下でいったん素の姿勢に戻し、向きの指定で狙い直す。
+    boneSet('RightArm', null);
     // 開くのは肩から。腕の骨だけを大きくひねると関節が外れて見える。
     boneSet('RightShoulder', [[0,0,1, -r*0.18], [0,1,0, r*0.12]]);   // 上げすぎると頭が埋まる
     boneSet('LeftShoulder',  [[0,0,1,  r*0.18], [0,1,0, -r*0.12], [1,0,0, -g*0.30]]);
-    boneSet('RightForeArm', [
-      [1,0,0, -0.55*w + 0.80*c - r*0.20],   // 前腕は遅れて畳み、遅れて伸びる
-      [0,0,1, -0.30*w + 0.45*c + r*0.18]
-    ]);
+    boneSet('RightForeArm', null);
 
     // 左腕。守備では前へ出す（前＝負）。上へ上げるのではない。
     boneSet('LeftArm', [
@@ -816,14 +828,33 @@ function update(){
     // 手のボーンは拳ではなく手首にある。そのまま武器を置くと手首に刺さって見える。
     // 前腕から手へ伸びる向きへ少しずらし、拳の中に柄が来るようにする。
     // 向きは骨の位置から出るので、当てずっぽうにならない。
+    // 右腕と剣は「向き」で決める。構え → ため（後ろ）→ 振り抜き（前下）。
+    // 成分は (キャラの左, 上, 正面)。右手なので左成分は負、つまりキャラの右側。
+    _dA.set(-0.42, -0.88,  0.08);            // 構え：下ろす
+    _dB.set(-0.58,  0.42, -0.70);            // ため：後ろ上へ担ぐ
+    _dC.set(-0.10, -0.42,  0.90);            // 振り抜き：前下へ払う
+    _dir.copy(_dA).lerp(_dB, w).lerp(_dC, c);
+    aimBone('RightArm', 'RightForeArm', _dir);
+    chara.updateMatrixWorld(true);
+
+    _dA.set(-0.28, -0.94,  0.18);
+    _dB.set(-0.38,  0.58, -0.72);
+    _dC.set( 0.05, -0.58,  0.82);
+    _dir.copy(_dA).lerp(_dB, w).lerp(_dC, c);
+    aimBone('RightForeArm', 'RightHand', _dir);
+    chara.updateMatrixWorld(true);
+
     gripShift('RightHand', 'RightForeArm', swordPivot,  GRIP_OUT);
     gripShift('LeftHand',  'LeftForeArm',  shieldPivot, SHIELD_OUT);
     if (bones.RightHand){
       // 刀身はモデルの +Y。正で前へ倒れる。立て気味に構え、後ろへ担ぎ、前へ斬る。
       // 立てて構える。ためで後ろへ担ぎ、打ち抜きで前へ振り下ろす。
-      // 構えは横に倒す。立てすぎると拳から生えて見える。
-      _e2.set(0.10 - 1.55*w + 2.95*c, 0.20*w - 0.30*c, 0.80 + 0.25*w - 1.20*c, 'XYZ');
-      _q2.setFromEuler(_e2);
+      // 刀身（モデルの +Y）を向けたい方向へ。構えは斜め上、ためで後ろ、振りで前下。
+      _dA.set(-0.38,  0.86,  0.34);
+      _dB.set(-0.30,  0.62, -0.72);
+      _dC.set( 0.22, -0.36,  0.91);
+      _dir.copy(_dA).lerp(_dB, w).lerp(_dC, c).normalize();
+      _q2.setFromUnitVectors(_upY, _dir);
       bones.RightHand.getWorldQuaternion(_qh).invert();
       swordPivot.quaternion.copy(_qh).multiply(_qc).multiply(_q2);
     }
