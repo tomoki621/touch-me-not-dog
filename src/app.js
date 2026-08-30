@@ -130,7 +130,7 @@ stand.add(rim);
 // ---------------------------------------------------------------- モデル
 // Meshy は書き出しをどれも同じ箱に正規化するので、3体とも高さ 1.9 で出てくる。
 // 背丈と握り位置はこちらで組み直す。すべて「キャラの背丈＝1.9」基準。
-const HEAD_UP = -0.22;   // カメラは上から見下ろすので、頭を少し上向きに
+const HEAD_UP = 0.14;    // 正で顔が上を向く（headfront の骨の位置から実測）   // カメラは上から見下ろすので、頭を少し上向きに
 const HEAD_Y = 1.45;                              // 描き文字とエフェクトの高さ
 const HAND_R = new THREE.Vector3( 0.46, 0.86, 0.10);   // 剣を持つ手
 const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
@@ -243,25 +243,6 @@ load('models/shield.glb', (root) => {
   root.position.x += SHIELD_PUSH;  // 面の法線方向へ逃がす。拳が盾を突き抜けないように。
   shieldPivot.add(root);
 });
-
-// ---------------------------------------------------------------- 垂直の基準棒
-// カード面に対してまっすぐ立てた棒。キャラが傾いて見える原因を切り分けるための
-// 一時的な目印で、確認できたら消す。
-//   棒は真っ直ぐでキャラだけ傾く → モデルの姿勢の問題
-//   棒も一緒に傾く               → カード面の解釈がこちらの間違い
-const poleMat = new THREE.MeshBasicMaterial({color:0x00ff88});
-const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.0, 8), poleMat);
-pole.position.y = 1.0;
-const poleRoot = new THREE.Group();
-poleRoot.add(pole);
-// 足元に敷く十字。カード面と平行かどうかを見る。
-const barGeo = new THREE.BoxGeometry(1.6, 0.02, 0.08);
-const barMat = new THREE.MeshBasicMaterial({color:0xff3355});
-const barA = new THREE.Mesh(barGeo, barMat);
-const barB = new THREE.Mesh(barGeo, barMat);
-barB.rotation.y = Math.PI/2;
-poleRoot.add(barA, barB);
-stand.add(poleRoot);
 
 // ---------------------------------------------------------------- モーション
 // models/anim/ に置いたクリップがあれば、骨を数式で回すのをやめてそちらを再生する。
@@ -806,9 +787,11 @@ function update(){
     boneSet('Spine02', [[0,1,0, 0.30*w - 0.42*c], [1,0,0, -r*0.34 + c*0.20 + g*0.10]]);
 
     // 頭。ためで振りかぶる方を見て、打ち抜きで斬る先を追う。守備では首をすくめる。
-    boneSet('neck', [[1,0,0, g*0.22 - r*0.20]]);
+    // 首と頭。正で上を向く。守備では首をすくめ、咆哮では天を仰ぎ、
+    // 斬るときは打点を見下ろす。
+    boneSet('neck', [[1,0,0, -g*0.18 + r*0.20]]);
     boneSet('Head', [
-      [1,0,0, HEAD_UP - r*0.60 + g*0.30 + c*0.22 - w*0.15],
+      [1,0,0, HEAD_UP + r*0.50 - g*0.22 - c*0.20 + w*0.12],
       [0,1,0, 0.22*w - 0.30*c]
     ]);
   } else {
@@ -839,8 +822,6 @@ function update(){
     STAND_Z + st.guard*0.10 + cc*0.16 - ww*0.05
   );
   const grow = baseScale;
-  poleRoot.position.set(chara.position.x, 0.01, chara.position.z);
-  poleRoot.scale.setScalar(baseScale);
   blob.position.set(chara.position.x, 0.004, chara.position.z);
   blob.scale.setScalar(grow * 1.45);
   chara.scale.set(grow*(1-breathe*0.5), grow*(1+breathe+roarU*0.05), grow*(1-breathe*0.5));
