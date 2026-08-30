@@ -42,16 +42,15 @@ const anchor = mindar.addAnchor(0);
 // アンカーはカード面が XY、+Z がカードの外向き。X を +90° 回すと
 // キャラの Y-up がカードの法線に揃い、以降は素直な Y-up 空間で書ける。
 // 単位はカードの横幅＝1（実物のルイーズは 59mm 幅）。
-// 一度出たら出たままにする。アンカーの子にすると見失った瞬間に消えるので、
-// 場面へ直接置き、カードが見えている間だけその姿勢を写し取る。
-// 見失ったら最後の姿勢のまま、その場に留まる。
-const world = new THREE.Group();
-scene.add(world);
 let everFound = false;
 
 const stand = new THREE.Group();
 stand.rotation.x = Math.PI/2;
-world.add(stand);
+anchor.group.add(stand);          // カードに追従させる
+
+// カードの中心よりわずかに奥（印刷面の上辺側）へ寄せる。手前に余白ができて、
+// 手を伸ばす動きが入る余地が生まれる。stand 空間の -Z がカードの奥にあたる。
+const STAND_Z = -0.28;
 
 const chara = new THREE.Group();      // 立ち位置と向きを持つ入れ物
 stand.add(chara);
@@ -221,7 +220,8 @@ anchor.onTargetFound = () => {
   loadHands();                    // 見つかってから読む。走査中の負荷を上げない。
 };
 anchor.onTargetLost = () => {
-  found = false;                  // 姿勢の更新は止まるが、その場に残る
+  found = false;
+  scan.classList.remove('gone');  // 見失ったら案内を戻す。ボタンは出したままにする。
 };
 
 // ---------------------------------------------------------------- 手の検出
@@ -506,13 +506,7 @@ function update(){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
 
-  // カードが見えている間だけ姿勢を写す。見失っても最後の姿勢のまま留まる。
-  if (found){
-    anchor.group.updateWorldMatrix(true, false);
-    anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
-    everFound = true;
-  }
-  world.visible = everFound;
+  if (found) everFound = true;
   if (everFound && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
   st.swing  = Math.max(0, st.swing  - dt*2.6);
@@ -529,7 +523,7 @@ function update(){
 
   // --- カードから出てくる
   const e = 1 - Math.pow(1 - spawnT, 3);
-  chara.visible = everFound;   // 一度出たら消さない
+  chara.visible = true;   // 表示の可否はアンカー（カード追従）に任せる
   spawnRing.visible = spawnT > 0 && spawnT < 1;
   if (spawnRing.visible){
     spawnRing.scale.setScalar(0.4 + spawnT*2.2);
@@ -590,7 +584,7 @@ function update(){
   chara.position.set(
     st.guard*-0.10,
     (1-e)*-0.12 + swingArc*0.07 + roarU*0.05 + (Math.random()-0.5)*st.shakeT*0.03,
-    st.guard*0.08 + swingArc*0.10
+    STAND_Z + st.guard*0.08 + swingArc*0.10
   );
   const grow = baseScale;
   chara.scale.set(grow*(1-breathe*0.5), grow*(1+breathe+roarU*0.05), grow*(1-breathe*0.5));
