@@ -71,7 +71,7 @@ const anchor = mindar.addAnchor(0);
 // アンカーはカード面が XY、+Z がカードの外向き。X を +90° 回すと
 // キャラの Y-up がカードの法線に揃い、以降は素直な Y-up 空間で書ける。
 // 単位はカードの横幅＝1（実物のルイーズは 59mm 幅）。
-let everFound = false, lostT = 0, restarting = false;
+let everFound = false, lostT = 0, restarting = false, scaleInit = false;
 let cardAngle = 0;        // カードの面内の傾き
 let snapIdx = 0;          // それを90度単位に丸めた段
 let baseSnap = null;      // 最初に見つけたときの段。ここを基準に打ち消す。
@@ -741,9 +741,11 @@ function update(){
         world.position.lerp(_tp, k);
         world.quaternion.slerp(_tq, k);
       }
-      // 大きさは常に 1。カード追跡の姿勢推定は向きと位置だけで、伸縮は含まない。
-      // 行列から取り出すと推定誤差がそのまま大きさのぶれになる。
-      world.scale.set(1, 1, 1);
+      // 大きさは 1 に固定してはいけない。アンカーの行列には尺度が含まれていて、
+      // 1 にするとキャラが本来の大きさとかけ離れて画面から消える。
+      // 代わりに、うんと遅く追従させる。急な変化だけが落ちて、値は正しく保たれる。
+      if (!scaleInit){ world.scale.copy(_ts); scaleInit = true; }
+      else world.scale.lerp(_ts, 1 - Math.exp(-1.5*dt));
     }
 
     // カードの面内の回転だけを測る。カードを回す操作は攻守の切り替えであって、
