@@ -25,14 +25,25 @@ function renderDbg(){
 // 返してくることがある。カードの模様から特徴点を拾って照合する方式では、
 // 解像度と鮮明さがそのまま追跡の安定性と再検出の可否に直結する。要求を上書きする。
 const _gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+// 小さく写ったカードを拾えるかどうかは、ほぼ解像度で決まる。取れるだけ取りに行く。
 navigator.mediaDevices.getUserMedia = (c) => _gum({
   audio: false,
   video: Object.assign({ facingMode: 'environment' },
                        (c && typeof c.video === 'object') ? c.video : null,
-                       { width: {ideal: 1920}, height: {ideal: 1080} })
+                       { width: {ideal: 3840}, height: {ideal: 2160},
+                         frameRate: {ideal: 30},
+                         advanced: [{width: 3840}, {width: 2560}, {width: 1920}, {width: 1280}] })
 }).then(st => {
   const t = st.getVideoTracks()[0];
-  if (t) console.log('[camera]', JSON.stringify(t.getSettings()));
+  if (!t) return st;
+  const s0 = t.getSettings();
+  console.log('[camera]', JSON.stringify(s0));
+  // 低い解像度で開かれたら、後から上げられないか試す
+  if ((s0.width || 0) < 1280 && t.applyConstraints){
+    return t.applyConstraints({ width: {ideal: 1920}, height: {ideal: 1080} })
+      .then(() => { console.log('[camera] 再要求後', JSON.stringify(t.getSettings())); return st; })
+      .catch(() => st);
+  }
   return st;
 });
 
@@ -569,6 +580,16 @@ function boot(){
     return mindar.start();
   }).then(() => {
     dbg.started = true; renderDbg();
+    // 実際に開かれた解像度を数秒だけ知らせる。遠くのカードを拾えるかはここで決まる。
+    setTimeout(() => {
+      const v = mindar.video;
+      if (!v || !v.videoWidth) return;
+      const w = v.videoWidth, h = v.videoHeight;
+      dbgEl.style.display = 'block';
+      dbgEl.textContent = 'カメラ ' + w + 'x' + h +
+        (w < 1280 ? '（低い。遠いカードは拾いにくい）' : '');
+      setTimeout(() => { dbgEl.style.display = 'none'; }, 6000);
+    }, 1200);
     gate.classList.add('gone');
     setTimeout(() => { gate.style.display = 'none'; }, 520);
     renderer.setAnimationLoop(tick);
