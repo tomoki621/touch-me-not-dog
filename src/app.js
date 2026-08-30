@@ -28,8 +28,8 @@ const mindar = new MindARThree({
   imageTargetSrc: 'targets.mind',
   uiLoading: 'no', uiScanning: 'no', uiError: 'no',
   maxTrack: 1,
-  warmupTolerance: 0,      // 1フレーム一致すれば即「発見」。既定の5は渋すぎる。
-  missTolerance: 30,       // 見失っても粘る。多少ブレても消えない。
+  warmupTolerance: 1,      // 既定の5は渋い。0にすると再検出しなくなるので1にする。
+  missTolerance: 10,       // 見失いの判定。粘らせすぎると次の検出に移れない。
   filterMinCF: 0.0001,     // 小さいほど追従が滑らか
   filterBeta: 0.001
 });
@@ -50,13 +50,34 @@ anchor.group.add(stand);          // カードに追従させる
 
 // カードの中心よりわずかに奥（印刷面の上辺側）へ寄せる。手前に余白ができて、
 // 手を伸ばす動きが入る余地が生まれる。stand 空間の -Z がカードの奥にあたる。
-const STAND_Z = -0.28;
+const STAND_Z = -0.85;
 
 const chara = new THREE.Group();      // 立ち位置と向きを持つ入れ物
 stand.add(chara);
 const BASE_SCALE = 1.15;
 let baseScale = BASE_SCALE;   // 呼吸で毎フレーム掛けると累積するので基準を別に持つ              // カード幅の 1.15 倍を背丈にする
 chara.scale.setScalar(BASE_SCALE);
+
+// 足元の落ち影。方向光の影だけでは弱いので、接地点に濃い影を敷く。
+// これが無いと、位置が合っていても浮いて見える。
+function blobTexture(){
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(64,64,0, 64,64,64);
+  grd.addColorStop(0,    'rgba(0,0,0,0.75)');
+  grd.addColorStop(0.22, 'rgba(0,0,0,0.42)');
+  grd.addColorStop(0.55, 'rgba(0,0,0,0.13)');
+  grd.addColorStop(1,    'rgba(0,0,0,0)');
+  g.fillStyle = grd;
+  g.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+const blob = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5),
+  new THREE.MeshBasicMaterial({map:blobTexture(), transparent:true, depthWrite:false}));
+blob.rotation.x = -Math.PI/2;
+blob.renderOrder = -1;
+stand.add(blob);
 
 // 影は実物のカードの上に落ちる。接地はこれで完全に成立する。
 const cardShadow = new THREE.Mesh(new THREE.PlaneGeometry(8,8),
@@ -83,6 +104,7 @@ stand.add(rim);
 // ---------------------------------------------------------------- モデル
 // Meshy は書き出しをどれも同じ箱に正規化するので、3体とも高さ 1.9 で出てくる。
 // 背丈と握り位置はこちらで組み直す。すべて「キャラの背丈＝1.9」基準。
+const HEAD_UP = -0.26;   // カメラは上から見下ろすので、頭を少し上向きに
 const HEAD_Y = 1.45;                              // 描き文字とエフェクトの高さ
 const HAND_R = new THREE.Vector3( 0.46, 0.86, 0.10);   // 剣を持つ手
 const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
@@ -561,7 +583,7 @@ function update(){
     boneSet('RightForeArm', [[1,0,0, on*(-0.70*wind + 1.30*chop)]]);
     boneSet('LeftArm',      [[1,0,0, st.guard*1.15], [0,1,0, -st.guard*0.55]]);
     boneSet('LeftForeArm',  [[1,0,0, st.guard*0.95]]);
-    boneSet('Head',         [[1,0,0, -roarU*0.45]]);
+    boneSet('Head',         [[1,0,0, HEAD_UP - roarU*0.45]]);
     boneSet('Spine02',      [[1,0,0, -roarU*0.15 + swingArc*0.12]]);
   } else {
     // --- リグが無いときは握りを支点に武器だけ回す
@@ -587,6 +609,8 @@ function update(){
     STAND_Z + st.guard*0.08 + swingArc*0.10
   );
   const grow = baseScale;
+  blob.position.set(chara.position.x, 0.004, chara.position.z);
+  blob.scale.setScalar(grow * 1.15);
   chara.scale.set(grow*(1-breathe*0.5), grow*(1+breathe+roarU*0.05), grow*(1-breathe*0.5));
 
   slash.visible = st.swing > 0.02;
