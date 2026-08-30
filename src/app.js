@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const $ = (id) => document.getElementById(id);
 const gate = $('gate'), note = $('note'), tapme = $('tapme');
-const acts = $('acts'), scan = $('scan'), touch = $('touch'), occ = $('occ');
+const acts = $('acts'), touch = $('touch'), occ = $('occ');
 
 // ---------------------------------------------------------------- 不具合の表示
 // 普段は何も出さない。壊れたときだけ、その理由を一行で出す。
@@ -259,13 +259,11 @@ let found = false, spawnT = 0;
 anchor.onTargetFound = () => {
   found = true; dbg.hits++;
   if (!everFound) spawnT = 0;     // 出てくる演出は最初の一度だけ
-  scan.classList.add('gone');     // 一度見つけたら案内は二度と出さない
   acts.classList.add('on');
   loadHands();                    // 見つかってから読む。走査中の負荷を上げない。
 };
 anchor.onTargetLost = () => {
   found = false;
-  scan.classList.remove('gone');  // 見失ったら案内を戻す。ボタンは出したままにする。
 };
 
 // ---------------------------------------------------------------- 手の検出

@@ -28,17 +28,6 @@
   #occ{position:fixed;inset:0;pointer-events:none;z-index:2}
   #touch{position:fixed;inset:0;z-index:3;touch-action:none}
 
-  /* カードを探している間だけ出る枠 */
-  #scan{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:1;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
-    transition:opacity .45s}
-  #scan.gone{opacity:0}
-  #frame{width:min(56vw,230px);aspect-ratio:59/86;border-radius:10px;
-    border:2px dashed #ffffff99;box-shadow:0 0 0 100vmax #00000055;
-    animation:pulse 2.2s ease-in-out infinite}
-  @keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
-  #scanTxt{font-size:14px;letter-spacing:.06em;color:#fff;text-shadow:0 2px 10px #000c}
-
   #acts{position:fixed;right:calc(14px + env(safe-area-inset-right,0px));top:50%;z-index:5;
     transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;
     opacity:0;pointer-events:none;transition:opacity .45s}
@@ -53,7 +42,6 @@
   /* 押しても見た目を変えない。撮っている映像に操作の痕跡を残さないため。 */
   .act:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
-  @media (prefers-reduced-motion: reduce){ #frame{animation:none;opacity:.85} }
 
   /* カメラ許可はユーザー操作起点でないとブラウザが弾く。この1タップだけは消せない。 */
   #gate{position:fixed;inset:0;z-index:9;background:var(--bg);cursor:pointer;
