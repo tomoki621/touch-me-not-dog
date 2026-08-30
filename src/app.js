@@ -45,7 +45,7 @@ const mindar = new MindARThree({
   uiLoading: 'no', uiScanning: 'no', uiError: 'no',
   maxTrack: 1,
   warmupTolerance: 1,      // 既定の5は渋い。0にすると再検出しなくなるので1にする。
-  missTolerance: 10,       // 見失いの判定。粘らせすぎると次の検出に移れない。
+  missTolerance: 60,       // 少々見失っても粘る。消えるほうが困る。
   filterMinCF: 0.0001,     // 小さいほど追従が滑らか
   filterBeta: 0.001
 });
@@ -60,9 +60,14 @@ const anchor = mindar.addAnchor(0);
 // 単位はカードの横幅＝1（実物のルイーズは 59mm 幅）。
 let everFound = false, lostT = 0, restarting = false;
 
+// カードが見えている間は姿勢を写して追従し、見失ったら最後の姿勢のまま残す。
+// アンカーの子にすると見失った瞬間に消えるので、場面へ直接置いて行列だけ写す。
+const world = new THREE.Group();
+scene.add(world);
+
 const stand = new THREE.Group();
 stand.rotation.x = Math.PI/2;
-anchor.group.add(stand);          // カードに追従させる
+world.add(stand);
 
 // カードの中心よりわずかに奥（印刷面の上辺側）へ寄せる。手前に余白ができて、
 // 手を伸ばす動きが入る余地が生まれる。stand 空間の -Z がカードの奥にあたる。
@@ -401,7 +406,7 @@ function drawOcclusion(){
 // ---------------------------------------------------------------- 3つの動作
 // リグが無いので腕は動かない。剣と盾は握りを支点に回し、体は全身で演技する。
 // 握り位置から生えたまま角度だけ変わるので、分離して浮くことはない。
-const st = { t:0, swing:0, roar:0, guard:0, guardTarget:0, shakeT:0 };
+const st = { t:0, swing:0, roar:0, guard:0, guardTarget:0, shakeT:0, autoCd:0 };
 let charaYaw = 0;   // 2本指のひねりで足す向きの調整ぶん
 let btnGuard = 0;   // 盾ボタン
 let cardAngle = 0;  // カードの傾き（0=縦置き、±90°=横置き）
@@ -491,7 +496,7 @@ gate.addEventListener('click', boot);
 // ---------------------------------------------------------------- ループ
 const clock = new THREE.Clock();
 const _camLocal = new THREE.Vector3(), _handW = new THREE.Vector3();
-const _cardUp = new THREE.Vector3();
+const _cardUp = new THREE.Vector3(), _v3 = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
@@ -538,6 +543,11 @@ function update(){
 
   if (found){
     everFound = true;
+    anchor.group.updateWorldMatrix(true, false);
+    const e = anchor.group.matrixWorld.elements;
+    let ok = true;
+    for (let i = 0; i < 16; i++) if (!Number.isFinite(e[i])) ok = false;
+    if (ok) anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
     // 遊戯王の作法どおり、カードを横に置いたら守備表示とみなす。
     // カードの「上」がカメラから見てどちらを指しているかで縦横を判定する。
     _cardUp.set(0,1,0).transformDirection(anchor.group.matrixWorld);
@@ -552,8 +562,22 @@ function update(){
     const t = Math.abs(Math.sin(cardAngle));      // 縦=0, 横=1
     sideways += ((t > 0.72 ? 1 : 0) - sideways) * (1 - Math.exp(-6*dt));
   }
+  world.visible = everFound;
+
   // 盾は「ボタンを押している」か「カードが横置き」で構える
   st.guardTarget = Math.max(btnGuard, sideways > 0.5 ? 1 : 0);
+
+  // 攻撃表示のときだけ、手が近づいたら自動で斬る。守備表示では盾に専念させる。
+  st.autoCd = Math.max(0, st.autoCd - dt);
+  if (everFound && sideways < 0.5 && handSeen && handLostT < 0.4 && st.autoCd <= 0){
+    _v3.set(0, HEAD_Y*0.55, 0).applyMatrix4(chara.matrixWorld).project(camera);
+    const cx = (_v3.x*0.5 + 0.5)*innerWidth, cy = (-_v3.y*0.5 + 0.5)*innerHeight;
+    const reach = Math.min(innerWidth, innerHeight)*0.32;
+    if (Math.hypot(handPts[8].x - cx, handPts[8].y - cy) < reach){
+      doSword();
+      st.autoCd = 1.1;
+    }
+  }
   if (everFound && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
   st.swing  = Math.max(0, st.swing  - dt*2.6);
