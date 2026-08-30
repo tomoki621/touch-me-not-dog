@@ -687,7 +687,7 @@ function update(){
   }
   if (everFound && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
-  st.swing  = Math.max(0, st.swing  - dt*2.6);
+  st.swing  = Math.max(0, st.swing  - dt*2.0);
   st.roar   = Math.max(0, st.roar   - dt*1.5);
   st.shakeT = Math.max(0, st.shakeT - dt);
   st.guard += (st.guardTarget - st.guard) * (1 - Math.exp(-11*dt));
@@ -726,39 +726,59 @@ function update(){
     chara.getWorldQuaternion(_cq);
     const g = st.guard, r = roarU;
     const u = swingU;
-    const wind = u < 0.32 ? u/0.32 : 1 - (u-0.32)/0.68;           // 振りかぶり
-    const chop = u < 0.32 ? 0 : Math.sin((u-0.32)/0.68*Math.PI);  // 斬り下ろし
+
+    // 斬撃は三段に分ける。ためて、打ち抜いて、ゆっくり戻す。
+    // 山なりの一本調子だと打点が定まらず、振っているように見えない。
+    const wind = u < 0.35 ? Math.sin(u/0.35 * Math.PI/2)          // 0→1 ためる
+                          : Math.max(0, 1 - (u-0.35)/0.15);       // 一気に解く
+    const chop = u < 0.35 ? 0
+               : u < 0.55 ? Math.sin((u-0.35)/0.20 * Math.PI/2)   // 0→1 打ち抜く
+                          : Math.max(0, 1 - (u-0.55)/0.45);       // ゆっくり戻す
     const on = st.swing > 0.001 ? 1 : 0;
     const w = on*wind, c = on*chop;
 
-    // 斬撃は真上から落とすと硬いので、肩を開きながら斜めに振り抜く。
-    // X軸で上下、Z軸で内外に倒し、体のひねりを少し遅らせて添える。
+    // 右腕。肩の上へ担いでから、左下へ斜めに振り抜く。
     boneSet('RightArm', [
-      [1,0,0, -1.55*w + 2.30*c + r*0.15],
-      [0,0,1, -0.55*w + 1.00*c - r*1.05],   // 咆哮では外へ開く
-      [0,1,0,  0.25*w - 0.35*c]
+      [1,0,0, -1.95*w + 2.65*c + r*0.30],
+      [0,0,1, -0.70*w + 1.25*c - r*1.35],     // 咆哮では大きく外へ開く
+      [0,1,0,  0.40*w - 0.55*c + r*0.25]
     ]);
-    boneSet('RightForeArm', [[1,0,0, -0.95*w + 1.25*c], [0,0,1, r*0.35]]);
+    boneSet('RightForeArm', [
+      [1,0,0, -1.25*w + 1.55*c],              // 前腕は遅れて伸びる
+      [0,0,1, -0.30*w + 0.45*c + r*0.40]
+    ]);
+    boneSet('RightHand', [[0,0,1, -0.35*w + 0.55*c]]);   // 手首の返し
 
-    // 守備は盾を体の前へ出す。腕だけでなく肩ごと前に入れる。
+    // 左腕。守備では肩ごと前へ入れ、盾を顔の高さまで持ち上げる。
     boneSet('LeftArm', [
-      [1,0,0, g*1.30 + r*0.15],
-      [0,1,0, -g*0.80],
-      [0,0,1, g*0.35 + r*1.05]              // 咆哮では外へ開く
+      [1,0,0, g*1.50 + r*0.30],
+      [0,1,0, -g*0.95 - r*0.25],
+      [0,0,1, g*0.55 + r*1.35]
     ]);
-    boneSet('LeftForeArm', [[1,0,0, g*1.15], [0,1,0, -g*0.35], [0,0,1, -r*0.35]]);
+    boneSet('LeftForeArm', [
+      [1,0,0, g*1.30],
+      [0,1,0, -g*0.45],
+      [0,0,1, -r*0.40]
+    ]);
+    boneSet('LeftHand', [[0,0,1, g*0.30]]);
 
-    // 腰を落とす。膝を曲げ、股関節を前へ送る。
-    boneSet('LeftUpLeg',  [[1,0,0, g*0.50]]);
-    boneSet('RightUpLeg', [[1,0,0, g*0.50]]);
-    boneSet('LeftLeg',    [[1,0,0, -g*0.95]]);
-    boneSet('RightLeg',   [[1,0,0, -g*0.95]]);
+    // 脚。守備で深く沈み、斬撃では踏み込む側の膝を伸ばす。
+    boneSet('LeftUpLeg',  [[1,0,0, g*0.68 - c*0.25]]);
+    boneSet('RightUpLeg', [[1,0,0, g*0.68 + c*0.20]]);
+    boneSet('LeftLeg',    [[1,0,0, -g*1.25 + c*0.20]]);
+    boneSet('RightLeg',   [[1,0,0, -g*1.25]]);
 
-    // 体幹。斬撃でひねり、守備で前に屈み、咆哮で反る。
-    boneSet('Spine',   [[1,0,0, g*0.22 - r*0.10]]);
-    boneSet('Spine01', [[0,1,0, 0.30*w - 0.40*c], [1,0,0, g*0.14]]);
-    boneSet('Spine02', [[0,1,0, 0.22*w - 0.30*c], [1,0,0, -r*0.28 + c*0.15]]);
-    boneSet('Head',    [[1,0,0, HEAD_UP - r*0.55 + g*0.20]]);
+    // 体幹。ためで右へひねり、打ち抜きで左へ返す。守備では前に屈む。
+    boneSet('Spine',   [[1,0,0, g*0.34 - r*0.14], [0,1,0, 0.18*w - 0.24*c]]);
+    boneSet('Spine01', [[0,1,0, 0.40*w - 0.55*c], [1,0,0, g*0.20 + c*0.12]]);
+    boneSet('Spine02', [[0,1,0, 0.30*w - 0.42*c], [1,0,0, -r*0.34 + c*0.20 + g*0.10]]);
+
+    // 頭。ためで振りかぶる方を見て、打ち抜きで斬る先を追う。守備では首をすくめる。
+    boneSet('neck', [[1,0,0, g*0.22 - r*0.20]]);
+    boneSet('Head', [
+      [1,0,0, HEAD_UP - r*0.60 + g*0.30 + c*0.22 - w*0.15],
+      [0,1,0, 0.22*w - 0.30*c]
+    ]);
   } else {
     // --- リグが無いときは握りを支点に武器だけ回す
     swordPivot.rotation.z = -0.18 + Math.sin(st.t*1.7)*0.05 - swingArc*2.3;
@@ -774,13 +794,17 @@ function update(){
 
   // --- 体: 腕が動かないぶん、全身で演技する
   const breathe = Math.sin(st.t*2.2)*0.012;
-  chara.rotation.x = -swingArc*0.20 - roarU*0.12;
+  // 踏み込みとためを全身にも乗せる。腕だけ動くと軽く見える。
+  const uu = 1 - st.swing;
+  const cc = st.swing > 0.001 ? (uu < 0.35 ? 0 : uu < 0.55 ? Math.sin((uu-0.35)/0.20*Math.PI/2) : Math.max(0, 1-(uu-0.55)/0.45)) : 0;
+  const ww = st.swing > 0.001 ? (uu < 0.35 ? Math.sin(uu/0.35*Math.PI/2) : Math.max(0, 1-(uu-0.35)/0.15)) : 0;
+  chara.rotation.x = ww*0.10 - cc*0.26 - roarU*0.14;
   // 構えると盾側の肩を前に出して半身になる。腕が上がらないぶんをこれで補う。
   chara.rotation.z = st.guard*0.10;
   chara.position.set(
     st.guard*-0.10,
-    Math.min(0, (1-e)*-0.12 - st.guard*0.16) + (Math.random()-0.5)*st.shakeT*0.02,   // 足を床より上げない
-    STAND_Z + st.guard*0.08 + swingArc*0.10
+    Math.min(0, (1-e)*-0.12 - st.guard*0.24 - cc*0.05) + (Math.random()-0.5)*st.shakeT*0.02,   // 足を床より上げない
+    STAND_Z + st.guard*0.10 + cc*0.16 - ww*0.05
   );
   const grow = baseScale;
   blob.position.set(chara.position.x, 0.004, chara.position.z);
