@@ -137,7 +137,7 @@ const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
 const SWORD_LEN  = 1.45;      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
 const SHIELD_LEN = 1.25;
 const SWORD_GRIP = 0.20;      // 柄の中ほどを握る
-const SHIELD_PUSH = 0.12;   // 盾を面の側へ逃がす量。握って見える程度に留める。     // 盾を手から外へ逃がす量。拳が面から出ないように。
+const SHIELD_PUSH = 0.34;   // 盾を面の側へ逃がす量。守備で顔がめり込むので深めに。     // 盾を手から外へ逃がす量。拳が面から出ないように。
 const LEAN_FIX = 0.060;       // モデル自体が3.4度うしろに傾いているのを起こす
 const FOOT_SINK = -0.05;      // 足を面に少し埋める。ぴったり0だと浮いて見える。
 
@@ -245,25 +245,6 @@ load('models/shield.glb', (root) => {
   root.position.z += SHIELD_PUSH;
   shieldPivot.add(root);
 });
-
-// ---------------------------------------------------------------- 軸の確認用
-// chara 空間の各軸が画面上でどちらを向くかを、推測ではなく目で確かめるための矢印。
-// 赤=+X 緑=+Y 青=+Z。向きが確定したら消す。
-const axes = new THREE.Group();
-[[0xff2222, 'x'], [0x22ff44, 'y'], [0x3388ff, 'z']].forEach(([col, ax]) => {
-  const g = new THREE.Group();
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.9, 8),
-    new THREE.MeshBasicMaterial({color: col}));
-  shaft.position.y = 0.45;
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 10),
-    new THREE.MeshBasicMaterial({color: col}));
-  tip.position.y = 1.0;
-  g.add(shaft, tip);
-  if (ax === 'x') g.rotation.z = -Math.PI/2;   // +X へ倒す
-  if (ax === 'z') g.rotation.x =  Math.PI/2;   // +Z へ倒す
-  axes.add(g);
-});
-chara.add(axes);
 
 // ---------------------------------------------------------------- モーション
 // models/anim/ に置いたクリップがあれば、骨を数式で回すのをやめてそちらを再生する。
@@ -775,7 +756,7 @@ function update(){
 
     // 右腕。ためで肩の上へ担ぎ（後ろ＝正）、打ち抜きで前へ振り下ろす（前＝負）。
     boneSet('RightArm', [
-      [1,0,0,  1.90*w - 2.60*c + r*0.25],
+      [1,0,0, -1.90*w + 2.60*c - r*0.25],
       [0,0,1, -0.70*w + 1.25*c - r*0.72],
       [0,1,0,  0.40*w - 0.55*c + r*0.18]
     ]);
@@ -783,14 +764,14 @@ function update(){
     boneSet('RightShoulder', [[0,0,1, -r*0.34], [0,1,0, r*0.12]]);
     boneSet('LeftShoulder',  [[0,0,1,  r*0.34], [0,1,0, -r*0.12], [1,0,0, -g*0.30]]);
     boneSet('RightForeArm', [
-      [1,0,0,  1.20*w - 1.50*c + r*0.30],   // 前腕は遅れて畳み、遅れて伸びる
+      [1,0,0, -1.20*w + 1.50*c - r*0.20],   // 前腕は遅れて畳み、遅れて伸びる
       [0,0,1, -0.30*w + 0.45*c + r*0.18]
     ]);
 
     // 左腕。守備では前へ出す（前＝負）。上へ上げるのではない。
     boneSet('LeftArm', [
       [1,0,0, -g*1.35 + r*0.25],
-      [0,1,0, -g*1.10 - r*0.18],   // 負で体の正面へ寄る。守備では腹の前まで持ってくる。
+      [0,1,0, -g*1.35 - r*0.18],   // 負で体の正面へ寄る。守備では腹の前まで持ってくる。
       [0,0,1,  g*0.15 + r*0.72]
     ]);
     boneSet('LeftForeArm', [
@@ -818,7 +799,8 @@ function update(){
     if (bones.RightHand){
       // 刀身はモデルの +Y。正で前へ倒れる。立て気味に構え、後ろへ担ぎ、前へ斬る。
       // 立てて構える。ためで後ろへ担ぎ、打ち抜きで前へ振り下ろす。
-      _e2.set(0.10 - 1.55*w + 2.95*c, 0.20*w - 0.30*c, 0.18 + 0.25*w - 0.60*c, 'XYZ');
+      // 構えは横に倒す。立てすぎると拳から生えて見える。
+      _e2.set(0.10 - 1.55*w + 2.95*c, 0.20*w - 0.30*c, 0.80 + 0.25*w - 1.20*c, 'XYZ');
       _q2.setFromEuler(_e2);
       bones.RightHand.getWorldQuaternion(_qh).invert();
       swordPivot.quaternion.copy(_qh).multiply(_qc).multiply(_q2);
@@ -835,7 +817,7 @@ function update(){
     // 斬るときは打点を見下ろす。
     boneSet('neck', [[1,0,0, g*0.18 - r*0.20]]);
     boneSet('Head', [
-      [1,0,0, HEAD_UP - r*0.50 + g*0.55 + c*0.20 - w*0.12],   // 守備では深くうつむく
+      [1,0,0, HEAD_UP - r*0.50 + g*0.95 + c*0.20 - w*0.12],   // 守備では深くうつむく
       [0,1,0, 0.22*w - 0.30*c]
     ]);
   } else {
