@@ -7,83 +7,13 @@
 <title>触らせてくれない</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap">
 <style>
-  :root{
-    --bg:#e9e4ee; --fg:#241c33; --dim:#6d6280;
-    --accent:#2a5bd7; --hot:#e8202a; --bad:#c4523a;
-    --glass:#e9e4eed9; --line:#241c3326; --shadow:#00000026;
-    --display:"Dela Gothic One","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#191424; --fg:#efe9f8; --dim:#9a8fb0;
-      --accent:#5b86ef; --hot:#ff5560; --bad:#e8705a;
-      --glass:#191424cc; --line:#efe9f833; --shadow:#00000099;
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#191424; --fg:#efe9f8; --dim:#9a8fb0;
-    --accent:#5b86ef; --hot:#ff5560; --bad:#e8705a;
-    --glass:#191424cc; --line:#efe9f833; --shadow:#00000099;
-  }
-
-  *{box-sizing:border-box}
-  html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;background:#000;
-    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;color:var(--fg);
-    -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;
-    -webkit-touch-callout:none}
-
-  #ar{position:fixed;inset:0;overflow:hidden}
-  /* 手の領域だけ実写を描き戻すレイヤー。3Dより前、HUDより後ろ。 */
-  #occ{position:fixed;inset:0;pointer-events:none;z-index:2}
-  #touch{position:fixed;inset:0;z-index:3;touch-action:none}
-
-  /* カードを探している間だけ出る枠 */
-  #scan{position:fixed;inset:0;z-index:4;pointer-events:none;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
-    transition:opacity .45s}
-  #scan.gone{opacity:0}
-  #frame{width:min(56vw,230px);aspect-ratio:59/86;border-radius:10px;
-    border:2px dashed #ffffff99;box-shadow:0 0 0 100vmax #00000055;
-    animation:pulse 2.2s ease-in-out infinite}
-  @keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
-  #scanTxt{font-size:14px;letter-spacing:.06em;color:#fff;text-shadow:0 2px 10px #000c}
-
-  #acts{position:fixed;right:calc(14px + env(safe-area-inset-right,0px));top:50%;z-index:5;
-    transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;
-    opacity:0;pointer-events:none;transition:opacity .45s}
-  #acts.on{opacity:1;pointer-events:auto}
-  .act{-webkit-appearance:none;appearance:none;width:58px;height:58px;padding:0;
-    border-radius:50%;border:1px solid var(--line);background:var(--glass);
-    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    color:var(--fg);cursor:pointer;display:grid;place-items:center;
-    box-shadow:0 3px 14px var(--shadow);transition:transform .09s,background .12s}
-  .act svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:1.7;
-    stroke-linecap:round;stroke-linejoin:round}
-  .act:active,.act.hit{transform:scale(.9);background:var(--accent);color:#fff}
-  .act:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-
-  @media (prefers-reduced-motion: reduce){ #frame{animation:none;opacity:.85} }
-
-  /* カメラ許可はユーザー操作起点でないとブラウザが弾く。この1タップだけは消せない。 */
-  #gate{position:fixed;inset:0;z-index:9;background:var(--bg);cursor:pointer;
+  /* 最小限。ここが効かないとタップできなくなるので HTML に直接置く。 */
+  html,body{height:100%;margin:0;overflow:hidden;background:#191424;
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;color:#efe9f8}
+  #gate{position:fixed;inset:0;z-index:9;cursor:pointer;background:#191424;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:20px;padding:34px 28px;text-align:center;transition:opacity .5s}
-  #gate.gone{opacity:0;pointer-events:none}
-  #gate h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,9vw,50px);
-    margin:0;letter-spacing:-.01em;text-wrap:balance;line-height:1.25}
-  #gate p{margin:0;max-width:25em;font-size:14px;line-height:1.9;color:var(--dim)}
-  #tapme{font-size:13px;letter-spacing:.14em;color:var(--accent);
-    animation:breathe 2.4s ease-in-out infinite}
-  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
-  #note{font-size:12.5px;line-height:1.8;color:var(--bad);min-height:1.5em;max-width:28em;margin:0}
-  @media (prefers-reduced-motion: reduce){ #tapme{animation:none;opacity:1} }
-
-  /* どこで止まっているかを推測しないための表示。原因が分かったら消す。 */
-  #dbg{position:fixed;left:0;bottom:0;z-index:7;margin:0;padding:8px 12px;
-    padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.65;
-    color:#fff;background:#000000aa;white-space:pre;pointer-events:auto;cursor:pointer}
-  #dbg.hidden{opacity:.25}
+    gap:20px;padding:34px 28px;text-align:center}
+  #scan,#acts,#dbg{opacity:0}
 </style>
 </head>
 <body>
@@ -119,13 +49,24 @@
 </div>
 
 <script>
-// HTML は GitHub Pages に10分キャッシュされる。そのままだと更新しても古い JS を
-// 読み続けるので、版番号だけ毎回キャッシュ無しで取りに行き、それを付けて読み込む。
-// こうすると HTML が古くても中身は必ず最新になる。
-fetch('build.json', {cache:'no-store'})
-  .then(r => r.json())
-  .then(v => { const s = document.createElement('script'); s.src = 'app.js?h=' + v.h; document.body.appendChild(s); })
-  .catch(() => { const s = document.createElement('script'); s.src = 'app.js?t=' + Date.now(); document.body.appendChild(s); });
+// HTML は GitHub Pages に10分キャッシュされる。中身を HTML に置くと修正が届かない。
+// CSS も JS も外部ファイルにして、版番号だけ毎回取りに行って付ける。
+fetch("build.json", {cache:"no-store"}).then(r => r.json()).then(v => {
+  const l = document.createElement("link");
+  l.rel = "stylesheet"; l.href = "app.css?h=" + v.css;
+  document.head.appendChild(l);
+  const s = document.createElement("script");
+  s.src = "app.js?h=" + v.js;
+  document.body.appendChild(s);
+}).catch(() => {
+  const t = Date.now();
+  const l = document.createElement("link");
+  l.rel = "stylesheet"; l.href = "app.css?t=" + t;
+  document.head.appendChild(l);
+  const s = document.createElement("script");
+  s.src = "app.js?t=" + t;
+  document.body.appendChild(s);
+});
 </script>
 </body>
 </html>

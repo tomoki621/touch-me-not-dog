@@ -12,9 +12,19 @@ execFileSync(esbuild, [
   '--alias:path=./src/empty.js', '--alias:crypto=./src/empty.js'
 ], { stdio: 'inherit' });
 
-const bundle = fs.readFileSync('app.js');
-const hash = createHash('sha256').update(bundle).digest('hex').slice(0, 10);
+const bundle = fs.readFileSync("app.js");
+const css = fs.readFileSync("app.css");
+const h = (b) => createHash("sha256").update(b).digest("hex").slice(0, 10);
+const hash = h(bundle), cssHash = h(css);
 
-fs.writeFileSync('build.json', JSON.stringify({ h: hash }));
+// CSS の波括弧が釣り合っているかを機械的に確かめる。一つ余るだけで以降の
+// 指定が全部無効になり、起動画面が押せなくなる事故を起こした。
+{
+  let d = 0, bad = 0;
+  for (const c of css.toString()) { if (c === "{") d++; else if (c === "}") { d--; if (d < 0) { bad++; d = 0; } } }
+  if (d !== 0 || bad !== 0) { console.error("CSS の波括弧が不正: 過不足=" + d + " 余分な閉じ=" + bad); process.exit(1); }
+}
+
+fs.writeFileSync("build.json", JSON.stringify({ js: hash, css: cssHash }));
 
 console.log('app.js ' + (bundle.length/1048576).toFixed(2) + ' MB  hash=' + hash);
