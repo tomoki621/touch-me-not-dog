@@ -521,7 +521,7 @@ let freezeT = 0;          // 離してからも留まる残り
 const GUARD_IN = 1.2;     // 固定してから構えるまでの間
 const GUARD_OUT = 1.2;    // 構えを解いてから追従に戻るまでの間
 
-const doSword = () => { st.swing = 1; st.shakeT = 0.18; playAction('attack'); };
+const doSword = () => { st.swing = 1; st.shakeT = 0.26; playAction('attack'); };
 const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; playAction('roar'); };
 const guardOn = () => { if (!guardHeld){ guardHeld = true; poseDelay = GUARD_IN; } };
 const guardOff = () => { if (guardHeld){ guardHeld = false; freezeT = GUARD_OUT; } };
@@ -828,11 +828,11 @@ function update(){
     const u = swingU;
 
     // 軽く斜めに払う。大振りの振りかぶりはやめ、小さくためてすっと抜く。
-    const wind = u < 0.22 ? Math.sin(u/0.22 * Math.PI/2)
-                          : Math.max(0, 1 - (u-0.22)/0.12);
-    const chop = u < 0.22 ? 0
-               : u < 0.48 ? Math.sin((u-0.22)/0.26 * Math.PI/2)
-                          : Math.max(0, 1 - (u-0.48)/0.52);
+    const wind = u < 0.26 ? Math.sin(u/0.26 * Math.PI/2)
+                          : Math.max(0, 1 - (u-0.26)/0.10);     // 解くのは一瞬
+    const chop = u < 0.26 ? 0
+               : u < 0.42 ? Math.sin((u-0.26)/0.16 * Math.PI/2) // 打点まで速く
+                          : Math.max(0, 1 - (u-0.42)/0.58);     // 戻りはゆっくり
     const on = st.swing > 0.001 ? 1 : 0;
     const w = on*wind, c = on*chop;
 
@@ -963,13 +963,15 @@ function update(){
   const uu = 1 - st.swing;
   const cc = st.swing > 0.001 ? (uu < 0.35 ? 0 : uu < 0.55 ? Math.sin((uu-0.35)/0.20*Math.PI/2) : Math.max(0, 1-(uu-0.55)/0.45)) : 0;
   const ww = st.swing > 0.001 ? (uu < 0.35 ? Math.sin(uu/0.35*Math.PI/2) : Math.max(0, 1-(uu-0.35)/0.15)) : 0;
-  chara.rotation.x = -ww*0.10 + cc*0.26 - roarU*0.14;
+  // ためで軽く反り、振り下ろしで前へ体重を乗せる。逆にすると後退して見える。
+  chara.rotation.x = ww*0.12 - cc*0.34 - roarU*0.14;
   // 構えると盾側の肩を前に出して半身になる。腕が上がらないぶんをこれで補う。
   chara.rotation.z = 0;   // 守備でも半身にせず、正面で盾を構える
   chara.position.set(
     st.guard*-0.10,
-    FOOT_SINK + Math.min(0, (1-e)*-0.12 - st.guard*0.24 - cc*0.05) + (Math.random()-0.5)*st.shakeT*0.02,   // 足を床より上げない
-    STAND_Z + st.guard*0.10 + cc*0.16 - ww*0.05
+    FOOT_SINK + Math.min(0, (1-e)*-0.12 - st.guard*0.24 - cc*0.13) + (Math.random()-0.5)*st.shakeT*0.03,   // 足を床より上げない
+    // +Z はカードの奥、つまりキャラの後ろ。踏み込みは負でないと後退してしまう。
+    STAND_Z + st.guard*0.10 - cc*0.26 + ww*0.07
   );
   const grow = baseScale;
   blob.position.set(chara.position.x, 0.004, chara.position.z);
