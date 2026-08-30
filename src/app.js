@@ -42,7 +42,7 @@ const anchor = mindar.addAnchor(0);
 // アンカーはカード面が XY、+Z がカードの外向き。X を +90° 回すと
 // キャラの Y-up がカードの法線に揃い、以降は素直な Y-up 空間で書ける。
 // 単位はカードの横幅＝1（実物のルイーズは 59mm 幅）。
-let everFound = false;
+let everFound = false, lostT = 0, restarting = false;
 
 const stand = new THREE.Group();
 stand.rotation.x = Math.PI/2;
@@ -50,7 +50,7 @@ anchor.group.add(stand);          // カードに追従させる
 
 // カードの中心よりわずかに奥（印刷面の上辺側）へ寄せる。手前に余白ができて、
 // 手を伸ばす動きが入る余地が生まれる。stand 空間の -Z がカードの奥にあたる。
-const STAND_Z = -0.85;
+const STAND_Z = 0.95;   // アンカーのYは画像座標系で下向き。奥は +Z 側になる。
 
 const chara = new THREE.Group();      // 立ち位置と向きを持つ入れ物
 stand.add(chara);
@@ -65,9 +65,9 @@ function blobTexture(){
   c.width = c.height = 128;
   const g = c.getContext('2d');
   const grd = g.createRadialGradient(64,64,0, 64,64,64);
-  grd.addColorStop(0,    'rgba(0,0,0,0.75)');
-  grd.addColorStop(0.22, 'rgba(0,0,0,0.42)');
-  grd.addColorStop(0.55, 'rgba(0,0,0,0.13)');
+  grd.addColorStop(0,    'rgba(0,0,0,0.92)');
+  grd.addColorStop(0.26, 'rgba(0,0,0,0.62)');
+  grd.addColorStop(0.60, 'rgba(0,0,0,0.22)');
   grd.addColorStop(1,    'rgba(0,0,0,0)');
   g.fillStyle = grd;
   g.fillRect(0,0,128,128);
@@ -104,7 +104,7 @@ stand.add(rim);
 // ---------------------------------------------------------------- モデル
 // Meshy は書き出しをどれも同じ箱に正規化するので、3体とも高さ 1.9 で出てくる。
 // 背丈と握り位置はこちらで組み直す。すべて「キャラの背丈＝1.9」基準。
-const HEAD_UP = -0.26;   // カメラは上から見下ろすので、頭を少し上向きに
+const HEAD_UP = -0.45;   // カメラは上から見下ろすので、頭を少し上向きに
 const HEAD_Y = 1.45;                              // 描き文字とエフェクトの高さ
 const HAND_R = new THREE.Vector3( 0.46, 0.86, 0.10);   // 剣を持つ手
 const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
@@ -528,7 +528,20 @@ function update(){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
 
-  if (found) everFound = true;
+  if (found){ everFound = true; lostT = 0; }
+  else if (everFound){
+    // 見失ったまま戻らないことがある。一定時間で追跡を作り直して復帰させる。
+    lostT += dt;
+    if (lostT > 2.5 && !restarting){
+      restarting = true;
+      Promise.resolve()
+        .then(() => mindar.stop())
+        .then(() => mindar.start())
+        .then(() => { renderer.setAnimationLoop(tick); })
+        .catch(() => {})
+        .then(() => { restarting = false; lostT = 0; });
+    }
+  }
   if (everFound && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
   st.swing  = Math.max(0, st.swing  - dt*2.6);
@@ -610,7 +623,7 @@ function update(){
   );
   const grow = baseScale;
   blob.position.set(chara.position.x, 0.004, chara.position.z);
-  blob.scale.setScalar(grow * 1.15);
+  blob.scale.setScalar(grow * 1.45);
   chara.scale.set(grow*(1-breathe*0.5), grow*(1+breathe+roarU*0.05), grow*(1-breathe*0.5));
 
   slash.visible = st.swing > 0.02;
