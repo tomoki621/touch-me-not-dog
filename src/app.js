@@ -71,7 +71,7 @@ world.add(stand);
 
 // カードの中心よりわずかに奥（印刷面の上辺側）へ寄せる。手前に余白ができて、
 // 手を伸ばす動きが入る余地が生まれる。stand 空間の -Z がカードの奥にあたる。
-const FACE_YAW = Math.PI;   // カードの下辺側を正面として構える
+const FACE_YAW = 0;   // カードの下辺側を正面として構える
 const STAND_Z = 0.95;   // アンカーのYは画像座標系で下向き。奥は +Z 側になる。
 
 const chara = new THREE.Group();      // 立ち位置と向きを持つ入れ物
@@ -410,7 +410,8 @@ const st = { t:0, swing:0, roar:0, guard:0, guardTarget:0, shakeT:0, autoCd:0 };
 let charaYaw = 0;   // 2本指のひねりで足す向きの調整ぶん
 let btnGuard = 0;   // 盾ボタン
 let cardAngle = 0;  // カードの傾き（0=縦置き、±90°=横置き）
-let sideways = 0;   // 横置き＝守備表示とみなす度合い
+let sideways = 0;   // 1なら横置き＝守備表示
+let snapIdx = 0;    // カードの傾きを90度単位に丸めた段数
 
 const doSword = () => { st.swing = 1; st.shakeT = 0.18; };
 const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; };
@@ -559,9 +560,21 @@ function update(){
       while (d < -Math.PI) d += Math.PI*2;
       cardAngle += d * (1 - Math.exp(-8*dt));    // 揺れを均す
     }
-    const t = Math.abs(Math.sin(cardAngle));      // 縦=0, 横=1
-    sideways += ((t > 0.72 ? 1 : 0) - sideways) * (1 - Math.exp(-6*dt));
+    // 90度単位に丸める。中間の角度で細かく揺れないよう、中心付近でだけ切り替える。
+    const q = cardAngle / (Math.PI/2);
+    const nearest = Math.round(q);
+    if (Math.abs(q - nearest) < 0.35) snapIdx = ((nearest % 4) + 4) % 4;
+    sideways = (snapIdx % 2 === 1) ? 1 : 0;      // 奇数＝横置き＝守備表示
   }
+  // 台座をカードの法線まわりに回して、カードの傾きを打ち消す。
+  // stand.rotation は X→Y→Z の順に効くので、Y はカードの法線まわりになる。
+  // これで横に倒しても、キャラは倒す前と同じ向き・同じ立ち位置に留まる。
+  const snapTarget = -snapIdx * (Math.PI/2);
+  let ds = snapTarget - stand.rotation.y;
+  while (ds >  Math.PI) ds -= Math.PI*2;
+  while (ds < -Math.PI) ds += Math.PI*2;
+  if (Number.isFinite(ds)) stand.rotation.y += ds * (1 - Math.exp(-9*dt));
+
   world.visible = everFound;
 
   // 盾は「ボタンを押している」か「カードが横置き」で構える
@@ -606,7 +619,7 @@ function update(){
   // いる側）を正面として構えさせ、ひねりの手動調整ぶんだけを足す。
   if (!Number.isFinite(charaYaw)) charaYaw = 0;
   if (!Number.isFinite(baseScale) || baseScale <= 0) baseScale = BASE_SCALE;
-  chara.rotation.y = FACE_YAW + charaYaw - cardAngle;
+  chara.rotation.y = FACE_YAW + charaYaw;
 
   if (rigged){
     // --- ボーンを直接回す。武器は手のボーンの子なので勝手に付いてくる。
