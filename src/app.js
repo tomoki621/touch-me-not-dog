@@ -130,12 +130,15 @@ stand.add(rim);
 // ---------------------------------------------------------------- モデル
 // Meshy は書き出しをどれも同じ箱に正規化するので、3体とも高さ 1.9 で出てくる。
 // 背丈と握り位置はこちらで組み直す。すべて「キャラの背丈＝1.9」基準。
-const HEAD_UP = -0.45;   // カメラは上から見下ろすので、頭を少し上向きに
+const HEAD_UP = -0.22;   // カメラは上から見下ろすので、頭を少し上向きに
 const HEAD_Y = 1.45;                              // 描き文字とエフェクトの高さ
 const HAND_R = new THREE.Vector3( 0.46, 0.86, 0.10);   // 剣を持つ手
 const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
-const SWORD_LEN  = 0.95;                          // キャラ背丈に対する剣の全長
-const SHIELD_LEN = 0.62;                          // 同じく盾の高さ
+const SWORD_LEN  = 1.15;      // 身長の約6割。設定画の比率に合わせた。
+const SHIELD_LEN = 0.82;      // 同じく約4割。小さすぎて拳がはみ出していた。
+const SWORD_GRIP = 0.13;      // 剣のどこを握るか。0=柄頭、1=切先。
+const SHIELD_PUSH = 0.20;     // 盾を手から外へ逃がす量。拳が面から出ないように。
+const LEAN_FIX = 0.060;       // モデル自体が3.4度うしろに傾いているのを起こす
 
 const swordPivot  = new THREE.Group();            // 手のボーンが見つかればそちらへ移す
 const shieldPivot = new THREE.Group();
@@ -207,6 +210,7 @@ function load(url, onDone){
 
 load('models/rouise.glb', (root) => {
   fit(root, 1.9, 0, 0);            // 足を原点に
+  root.rotation.x = LEAN_FIX;      // 足元を軸に、傾きぶんだけ起こす
   chara.add(root);
 
   // ボーンを名前で拾い、素の姿勢を控える。以降はここからの差分だけを回す。
@@ -230,12 +234,13 @@ load('models/rouise.glb', (root) => {
   if (bones.LeftHand){  bones.LeftHand.getWorldScale(ws);  shieldPivot.scale.setScalar(SHIELD_LEN/ws.x); }
 });
 load('models/sword.glb', (root) => {
-  fit(root, 1.0, 0.22, 0);         // 握りのあたりを原点に。実寸は swordPivot 側で決める。
+  fit(root, 1.0, SWORD_GRIP, 0);   // 柄を握る位置が原点。実寸は swordPivot 側で決める。
   swordPivot.add(root);
 });
 load('models/shield.glb', (root) => {
   fit(root, 1.0, 0.5, 0);          // 中心を原点に。実寸は shieldPivot 側で決める。
   root.rotation.y = Math.PI/2;     // 面を体の外へ向ける
+  root.position.x += SHIELD_PUSH;  // 面の法線方向へ逃がす。拳が盾を突き抜けないように。
   shieldPivot.add(root);
 });
 
@@ -688,7 +693,7 @@ function update(){
   if (everFound && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
   st.swing  = Math.max(0, st.swing  - dt*2.0);
-  st.roar   = Math.max(0, st.roar   - dt*1.5);
+  st.roar   = Math.max(0, st.roar   - dt*0.75);   // 咆哮は長めに見せる
   st.shakeT = Math.max(0, st.shakeT - dt);
   st.guard += (st.guardTarget - st.guard) * (1 - Math.exp(-11*dt));
 
@@ -697,7 +702,12 @@ function update(){
 
   const swingU = 1 - st.swing;
   const swingArc = Math.sin(swingU*Math.PI);
-  const roarU = Math.sin(Math.min(1, (1-st.roar)*1.4) * Math.PI);
+    // 咆哮は「開いて、保って、戻る」。山なりだと一瞬で終わって見える。
+  const ru = 1 - st.roar;
+  const roarU = st.roar <= 0 ? 0
+              : ru < 0.22 ? Math.sin(ru/0.22 * Math.PI/2)
+              : ru < 0.72 ? 1
+              : Math.max(0, 1 - (ru-0.72)/0.28);
 
   // --- カードから出てくる
   const e = 1 - Math.pow(1 - spawnT, 3);
@@ -740,25 +750,28 @@ function update(){
     // 右腕。肩の上へ担いでから、左下へ斜めに振り抜く。
     boneSet('RightArm', [
       [1,0,0, -1.95*w + 2.65*c + r*0.30],
-      [0,0,1, -0.70*w + 1.25*c - r*1.35],     // 咆哮では大きく外へ開く
-      [0,1,0,  0.40*w - 0.55*c + r*0.25]
+      [0,0,1, -0.70*w + 1.25*c - r*0.72],
+      [0,1,0,  0.40*w - 0.55*c + r*0.18]
     ]);
+    // 開くのは肩から。腕の骨だけを大きくひねると関節が外れて見える。
+    boneSet('RightShoulder', [[0,0,1, -r*0.34], [0,1,0, r*0.12]]);
+    boneSet('LeftShoulder',  [[0,0,1,  r*0.34], [0,1,0, -r*0.12 - g*0.20]]);
     boneSet('RightForeArm', [
-      [1,0,0, -1.25*w + 1.55*c],              // 前腕は遅れて伸びる
-      [0,0,1, -0.30*w + 0.45*c + r*0.40]
+      [1,0,0, -1.25*w + 1.55*c - r*0.30],     // 前腕は遅れて伸びる
+      [0,0,1, -0.30*w + 0.45*c + r*0.18]
     ]);
     boneSet('RightHand', [[0,0,1, -0.35*w + 0.55*c]]);   // 手首の返し
 
     // 左腕。守備では肩ごと前へ入れ、盾を顔の高さまで持ち上げる。
     boneSet('LeftArm', [
       [1,0,0, g*1.50 + r*0.30],
-      [0,1,0, -g*0.95 - r*0.25],
-      [0,0,1, g*0.55 + r*1.35]
+      [0,1,0, -g*0.95 - r*0.18],
+      [0,0,1, g*0.55 + r*0.72]
     ]);
     boneSet('LeftForeArm', [
       [1,0,0, g*1.30],
       [0,1,0, -g*0.45],
-      [0,0,1, -r*0.40]
+      [0,0,1, -r*0.18]
     ]);
     boneSet('LeftHand', [[0,0,1, g*0.30]]);
 
