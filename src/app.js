@@ -135,10 +135,11 @@ const HEAD_Y = 1.45;                              // 描き文字とエフェク
 const HAND_R = new THREE.Vector3( 0.46, 0.86, 0.10);   // 剣を持つ手
 const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
 const SWORD_LEN  = 1.45;      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
-const SHIELD_LEN = 1.05;
+const SHIELD_LEN = 1.25;
 const SWORD_GRIP = 0.20;      // 柄の中ほどを握る
 const SHIELD_PUSH = 0.12;   // 盾を面の側へ逃がす量。握って見える程度に留める。     // 盾を手から外へ逃がす量。拳が面から出ないように。
 const LEAN_FIX = 0.060;       // モデル自体が3.4度うしろに傾いているのを起こす
+const FOOT_SINK = -0.05;      // 足を面に少し埋める。ぴったり0だと浮いて見える。
 
 const swordPivot  = new THREE.Group();            // 手のボーンが見つかればそちらへ移す
 const shieldPivot = new THREE.Group();
@@ -769,13 +770,13 @@ function update(){
 
     // 左腕。守備では前へ出す（前＝負）。上へ上げるのではない。
     boneSet('LeftArm', [
-      [1,0,0, -g*1.30 + r*0.25],
-      [0,1,0, -g*0.40 - r*0.18],
-      [0,0,1,  g*0.30 + r*0.72]
+      [1,0,0, -g*1.35 + r*0.25],
+      [0,1,0, -g*0.75 - r*0.18],   // 負で体の正面へ寄る。守備では中央まで持ってくる。
+      [0,0,1,  g*0.15 + r*0.72]
     ]);
     boneSet('LeftForeArm', [
-      [1,0,0, -g*1.00],
-      [0,1,0, -g*0.30],
+      [1,0,0, -g*1.05],
+      [0,1,0, -g*0.55],
       [0,0,1, -r*0.18]
     ]);
 
@@ -796,7 +797,8 @@ function update(){
     chara.getWorldQuaternion(_qc);
     if (bones.RightHand){
       // 刀身はモデルの +Y。正で前へ倒れる。立て気味に構え、後ろへ担ぎ、前へ斬る。
-      _e2.set(0.30 - 1.30*w + 2.60*c, 0.20*w - 0.30*c, 0.30 + 0.25*w - 0.60*c, 'XYZ');
+      // 立てて構える。ためで後ろへ担ぎ、打ち抜きで前へ振り下ろす。
+      _e2.set(0.10 - 1.55*w + 2.95*c, 0.20*w - 0.30*c, 0.18 + 0.25*w - 0.60*c, 'XYZ');
       _q2.setFromEuler(_e2);
       bones.RightHand.getWorldQuaternion(_qh).invert();
       swordPivot.quaternion.copy(_qh).multiply(_qc).multiply(_q2);
@@ -840,7 +842,7 @@ function update(){
   chara.rotation.z = 0;   // 守備でも半身にせず、正面で盾を構える
   chara.position.set(
     st.guard*-0.10,
-    Math.min(0, (1-e)*-0.12 - st.guard*0.24 - cc*0.05) + (Math.random()-0.5)*st.shakeT*0.02,   // 足を床より上げない
+    FOOT_SINK + Math.min(0, (1-e)*-0.12 - st.guard*0.24 - cc*0.05) + (Math.random()-0.5)*st.shakeT*0.02,   // 足を床より上げない
     STAND_Z + st.guard*0.10 + cc*0.16 - ww*0.05
   );
   const grow = baseScale;
