@@ -3,6 +3,12 @@ import { MindARThree } from 'mind-ar/dist/mindar-image-three.prod.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const $ = (id) => document.getElementById(id);
+
+// index.html だけは版番号を付けられない（それを読みに行く入口だから）ので、
+// 10分間は古いものが端末に残る。撤去した部品がそのまま出てしまうため、
+// 必ず新しいものが届くこちら側から消す。
+for (const id of ['grec', 'recwrap']) { const el = $(id); if (el) el.remove(); }
+
 const gate = $('gate'), note = $('note'), tapme = $('tapme');
 const acts = $('acts'), touch = $('touch'), occ = $('occ');
 
