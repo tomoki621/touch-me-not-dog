@@ -568,8 +568,14 @@ function update(){
   }
   // 台座をカードの法線まわりに回して、カードの傾きを打ち消す。
   // stand.rotation は X→Y→Z の順に効くので、Y はカードの法線まわりになる。
-  // これで横に倒しても、キャラは倒す前と同じ向き・同じ立ち位置に留まる。
-  const snapTarget = -snapIdx * (Math.PI/2);
+  //
+  // 段数の絶対値をそのまま使ってはいけない。画像座標系は Y が下向きなので、
+  // カードを普通に縦に置いた状態でも段数は 0 ではなく 2（＝180度）になる。
+  // それを打ち消しに回すと台座ごと裏返り、奥に置いたはずのキャラが手前へ出る。
+  // 見たいのは「縦から何度倒したか」だけなので、偶数段（縦置き）を基準にして
+  // 奇数段（横置き）のときだけ ±90度戻す。
+  const rel = (snapIdx % 2 === 0) ? 0 : ((snapIdx % 4 === 1) ? 1 : -1);
+  const snapTarget = -rel * (Math.PI/2);
   let ds = snapTarget - stand.rotation.y;
   while (ds >  Math.PI) ds -= Math.PI*2;
   while (ds < -Math.PI) ds += Math.PI*2;
