@@ -134,8 +134,8 @@ const HEAD_UP = -0.26;   // X軸まわりは正が前傾・下向き。上を向
 const HEAD_Y = 1.45;                              // 描き文字とエフェクトの高さ
 const HAND_R = new THREE.Vector3( 0.46, 0.86, 0.10);   // 剣を持つ手
 const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
-const SWORD_LEN  = 1.45;      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
-const SHIELD_LEN = 1.25;
+const SWORD_LEN  = 1.05;      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
+const SHIELD_LEN = 1.05;
 const SWORD_GRIP = 0.20;      // 柄の中ほどを握る
 const SHIELD_PUSH = 0.34;
 const GRIP_OUT  = 0.085;   // 手首から拳へずらす量。骨は手首にあるので、そのままだと刺さる。
@@ -246,6 +246,11 @@ load('models/rouise.glb', (root) => {
     bones[bn].worldToLocal(c);            // → 手の骨のローカル
     pv.position.copy(c);
     console.log('[grip] ' + bn + ' の拳へ ' + c.toArray().map(v => v.toFixed(3)).join(', '));
+    // 計算で出した握り位置の目印。拳の中に入っていれば当たり。確認後に消す。
+    const mk = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8),
+      new THREE.MeshBasicMaterial({color: bn === 'RightHand' ? 0xffdd00 : 0x00ddff}));
+    mk.name = 'gripMark';
+    pv.add(mk);
   });
 });
 load('models/sword.glb', (root) => {
