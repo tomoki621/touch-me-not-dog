@@ -246,6 +246,25 @@ load('models/shield.glb', (root) => {
   shieldPivot.add(root);
 });
 
+// ---------------------------------------------------------------- 軸の確認用
+// chara 空間の各軸が画面上でどちらを向くかを、推測ではなく目で確かめるための矢印。
+// 赤=+X 緑=+Y 青=+Z。向きが確定したら消す。
+const axes = new THREE.Group();
+[[0xff2222, 'x'], [0x22ff44, 'y'], [0x3388ff, 'z']].forEach(([col, ax]) => {
+  const g = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.9, 8),
+    new THREE.MeshBasicMaterial({color: col}));
+  shaft.position.y = 0.45;
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 10),
+    new THREE.MeshBasicMaterial({color: col}));
+  tip.position.y = 1.0;
+  g.add(shaft, tip);
+  if (ax === 'x') g.rotation.z = -Math.PI/2;   // +X へ倒す
+  if (ax === 'z') g.rotation.x =  Math.PI/2;   // +Z へ倒す
+  axes.add(g);
+});
+chara.add(axes);
+
 // ---------------------------------------------------------------- モーション
 // models/anim/ に置いたクリップがあれば、骨を数式で回すのをやめてそちらを再生する。
 // 無ければ今までどおり数式で動く。ファイルが増えたら勝手に切り替わる。
@@ -771,12 +790,12 @@ function update(){
     // 左腕。守備では前へ出す（前＝負）。上へ上げるのではない。
     boneSet('LeftArm', [
       [1,0,0, -g*1.35 + r*0.25],
-      [0,1,0, -g*0.75 - r*0.18],   // 負で体の正面へ寄る。守備では中央まで持ってくる。
+      [0,1,0, -g*1.10 - r*0.18],   // 負で体の正面へ寄る。守備では腹の前まで持ってくる。
       [0,0,1,  g*0.15 + r*0.72]
     ]);
     boneSet('LeftForeArm', [
       [1,0,0, -g*1.05],
-      [0,1,0, -g*0.55],
+      [0,1,0, -g*0.80],
       [0,0,1, -r*0.18]
     ]);
 
@@ -794,6 +813,7 @@ function update(){
     // 武器の向きは、手の骨のローカル軸に預けない。あの軸がどう取られているかは
     // モデル側の都合で、預けると刀身が拳を横切って「刺さって」見える。
     // 体の空間で向きを決め、手の骨の回転を打ち消して実現する。位置は手に付いて回る。
+    chara.updateMatrixWorld(true);   // 骨を回した直後なので、行列を作り直してから使う
     chara.getWorldQuaternion(_qc);
     if (bones.RightHand){
       // 刀身はモデルの +Y。正で前へ倒れる。立て気味に構え、後ろへ担ぎ、前へ斬る。
@@ -815,7 +835,7 @@ function update(){
     // 斬るときは打点を見下ろす。
     boneSet('neck', [[1,0,0, g*0.18 - r*0.20]]);
     boneSet('Head', [
-      [1,0,0, HEAD_UP - r*0.50 + g*0.22 + c*0.20 - w*0.12],
+      [1,0,0, HEAD_UP - r*0.50 + g*0.55 + c*0.20 - w*0.12],   // 守備では深くうつむく
       [0,1,0, 0.22*w - 0.30*c]
     ]);
   } else {
