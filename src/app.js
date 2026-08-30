@@ -620,6 +620,10 @@ const _upY = new THREE.Vector3(0, 1, 0);
 const _dRoarR  = new THREE.Vector3(-0.88,  0.36, -0.30);
 const _dRoarRF = new THREE.Vector3(-0.92,  0.28, -0.26);
 const _dRoarL  = new THREE.Vector3( 0.88,  0.36, -0.30);
+// 守備で剣を持つ側を引いて構える向き
+const _dGuardR  = new THREE.Vector3(-0.72, -0.52,  0.46);
+const _dGuardRF = new THREE.Vector3(-0.58, -0.16,  0.80);
+const _dGuardSw = new THREE.Vector3(-0.96,  0.10,  0.26);
 const _dRoarLF = new THREE.Vector3( 0.92,  0.28, -0.26);
 const _qRoll = new THREE.Quaternion();
 // 骨の節を、指定した向きへ向ける。chara 空間は +X=キャラの左、+Y=上、+Z=正面。
@@ -870,27 +874,29 @@ function update(){
     // 腕は角度ではなく「どちらへ向けるか」で決める。成分は (キャラの左, 上, 正面)。
     // 右手はキャラの右側なので左成分が負になる。
 
-    // 右腕。下ろす → 肘を畳んで頭の後ろへ担ぐ → 肘を伸ばして前下へ抜く。
+    // 右腕。斜めのサイドスロー。体の右へ引いてから、前を横切らせて薙ぐ。
     _dA.set(-0.40, -0.90,  0.06);           // 構え
-    _dB.set(-0.50,  0.62, -0.55);           // ため：上腕を後ろ上へ
-    _dC.set(-0.12, -0.28,  0.95);           // 振り抜き：上腕を前へ
+    _dB.set(-0.86,  0.24, -0.45);           // ため：右横やや後ろへ引く
+    _dC.set( 0.34, -0.22,  0.91);           // 振り抜き：前を横切って左前へ
     _dir.copy(_dA).lerp(_dB, w).lerp(_dC, c);
     if (r > 0.01) _dir.lerp(_dRoarR, r);    // 咆哮では外へ広げる
+    if (g > 0.01) _dir.lerp(_dGuardR, g);   // 守備では引いて構える
     aimBone('RightArm', 'RightForeArm', _dir);
     chara.updateMatrixWorld(true);
 
-    // 前腕。ためで大きく折り畳み、振り抜きで伸ばしきる。ここが肘の見せ場。
+    // 前腕。ためで胸の前へ折り畳み、振り抜きで伸ばしきる。ここが肘の見せ場。
     _dA.set(-0.26, -0.95,  0.16);
-    _dB.set(-0.30,  0.20, -0.93);           // 頭の後ろへ倒す
-    _dC.set( 0.02, -0.48,  0.88);           // 前へ伸ばす
+    _dB.set(-0.58,  0.16, -0.80);           // 右後ろへ畳む
+    _dC.set( 0.50, -0.26,  0.83);           // 左前へ伸ばしきる
     _dir.copy(_dA).lerp(_dB, w).lerp(_dC, c);
     if (r > 0.01) _dir.lerp(_dRoarRF, r);
+    if (g > 0.01) _dir.lerp(_dGuardRF, g);
     aimBone('RightForeArm', 'RightHand', _dir);
     chara.updateMatrixWorld(true);
 
     // 左腕。守備ではまっすぐ前へ伸ばす。肘を曲げると盾が顔へ寄ってめり込む。
     _dA.set( 0.38, -0.90,  0.05);           // 構え：下ろす
-    _dB.set( 0.22,  0.02,  0.97);           // 守備：前へ伸ばす
+    _dB.set( 0.04,  0.02,  0.999);          // 守備：体の中心線上へまっすぐ前
     _dir.copy(_dA).lerp(_dB, g);
     if (r > 0.01) _dir.lerp(_dRoarL, r);
     aimBone('LeftArm', 'LeftForeArm', _dir);
@@ -898,7 +904,7 @@ function update(){
 
     // 前腕も同じ向きへ。上腕と揃えれば肘が伸びる。
     _dA.set( 0.26, -0.95,  0.14);
-    _dB.set( 0.16,  0.04,  0.99);
+    _dB.set( 0.02,  0.04,  0.999);
     _dir.copy(_dA).lerp(_dB, g);
     if (r > 0.01) _dir.lerp(_dRoarLF, r);
     aimBone('LeftForeArm', 'LeftHand', _dir);
@@ -909,10 +915,12 @@ function update(){
       // 立てて構える。ためで後ろへ担ぎ、打ち抜きで前へ振り下ろす。
       // 刀身（モデルの +Y）を向けたい方向へ。構えは斜め上、ためで後ろ、振りで前下。
       // 構えは刃先を正面へ。上を向いていたものを前へ倒した形。
-      _dA.set(-0.16,  0.10,  0.98);
-      _dB.set(-0.28,  0.62, -0.73);
-      _dC.set( 0.22, -0.36,  0.91);
-      _dir.copy(_dA).lerp(_dB, w).lerp(_dC, c).normalize();
+      _dA.set(-0.16,  0.10,  0.98);           // 構え：刃先を正面へ
+      _dB.set(-0.90,  0.18, -0.40);           // ため：右横へ引く
+      _dC.set( 0.62, -0.24,  0.75);           // 振り抜き：左前へ薙ぐ
+      _dir.copy(_dA).lerp(_dB, w).lerp(_dC, c);
+      if (g > 0.01) _dir.lerp(_dGuardSw, g);  // 守備では刃を横に寝かせて構える
+      _dir.normalize();
       // 刀身をこの向きへ。ただしこれだけだと軸まわりのひねりが定まらず、
       // 平たい面がどちらを向くかは成り行きになる。明示的に回して横へ倒す。
       _q2.setFromUnitVectors(_upY, _dir);
@@ -934,7 +942,7 @@ function update(){
     boneSet('neck', [[1,0,0, g*0.18 - r*0.42]]);
     boneSet('Head', [
       [1,0,0, HEAD_UP - r*0.95 + g*0.95 + c*0.20 - w*0.12],   // 咆哮で天を仰ぎ、守備で深くうつむく
-      [0,1,0, 0.22*w - 0.30*c]
+      [0,1,0, 0]   // 攻撃で顔は横に振らない
     ]);
   } else {
     // --- リグが無いときは握りを支点に武器だけ回す
