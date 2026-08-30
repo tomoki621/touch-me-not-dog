@@ -210,7 +210,8 @@ function load(url, onDone){
   const name = url.split('/').pop();
   dbg.models[name] = '取得中';
   renderDbg();
-  loader.load(url, (g) => {
+  // モデルも GitHub Pages に10分キャッシュされる。作り直しても届かないので版番号を付ける。
+  loader.load(url + '?h=' + __GLBV__, (g) => {
     g.scene.traverse(o => {
       if (o.isMesh){ o.castShadow = true; o.frustumCulled = false; }
     });

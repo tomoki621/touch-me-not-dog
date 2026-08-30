@@ -9,3 +9,8 @@ tex.mjs
 mkmind.mjs
 slim.mjs
 package-lock.json
+render.mjs
+despike.mjs
+tips.mjs
+/*.png
+models/*.backup.glb

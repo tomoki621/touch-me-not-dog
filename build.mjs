@@ -4,17 +4,24 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 
+const h = (b) => createHash("sha256").update(b).digest("hex").slice(0, 10);
+
+// モデルの版番号。作り直しても古いのが配られる事故を防ぐため、中身から作って埋める。
+const glbHash = h(Buffer.concat(
+  ['rouise', 'sword', 'shield'].map((n) => fs.readFileSync('models/' + n + '.glb'))
+));
+
 const esbuild = './node_modules/@esbuild/win32-x64/esbuild.exe';
 execFileSync(esbuild, [
   'src/app.js', '--bundle', '--format=iife', '--target=es2018',
   '--outfile=app.js', '--minify',
+  '--define:__GLBV__=' + JSON.stringify(JSON.stringify(glbHash)),
   '--alias:fs=./src/empty.js', '--alias:util=./src/empty.js',
   '--alias:path=./src/empty.js', '--alias:crypto=./src/empty.js'
 ], { stdio: 'inherit' });
 
 const bundle = fs.readFileSync("app.js");
 const css = fs.readFileSync("app.css");
-const h = (b) => createHash("sha256").update(b).digest("hex").slice(0, 10);
 const hash = h(bundle), cssHash = h(css);
 
 // CSS の波括弧が釣り合っているかを機械的に確かめる。一つ余るだけで以降の
@@ -28,3 +35,4 @@ const hash = h(bundle), cssHash = h(css);
 fs.writeFileSync("build.json", JSON.stringify({ js: hash, css: cssHash }));
 
 console.log('app.js ' + (bundle.length/1048576).toFixed(2) + ' MB  hash=' + hash);
+console.log('モデル hash=' + glbHash);
