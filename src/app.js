@@ -56,9 +56,9 @@ const mindar = new MindARThree({
   uiLoading: 'no', uiScanning: 'no', uiError: 'no',
   maxTrack: 1,
   warmupTolerance: 1,      // 既定の5は渋い。0にすると再検出しなくなるので1にする。
-  missTolerance: 60,       // 少々見失っても粘る。消えるほうが困る。
-  filterMinCF: 0.0025,     // 小さいほど滑らかだが遅れる。追いつきを優先する。
-  filterBeta: 0.012
+  missTolerance: 30,       // 粘りすぎると崩れた姿勢を抱え続ける。
+  filterMinCF: 0.0008,     // 小さいほど滑らかだが遅れる。暴れるので少し戻す。
+  filterBeta: 0.005
 });
 const { renderer, scene, camera } = mindar;
 renderer.shadowMap.enabled = true;
@@ -700,6 +700,15 @@ function update(){
     const m = anchor.group.matrixWorld.elements;
     let ok = true;
     for (let i = 0; i < 16; i++) if (!Number.isFinite(m[i])) ok = false;
+    // 追跡が崩れると、縦横の伸縮が不揃いな行列が返る。そのまま使うと
+    // キャラが潰れて床に貼りついたようになる。歪んだフレームは捨てる。
+    if (ok){
+      const sx = Math.hypot(m[0], m[1], m[2]);
+      const sy = Math.hypot(m[4], m[5], m[6]);
+      const sz = Math.hypot(m[8], m[9], m[10]);
+      const lo = Math.min(sx, sy, sz), hi = Math.max(sx, sy, sz);
+      if (lo < 1e-4 || hi / lo > 1.25) ok = false;
+    }
     // 防御中はカードの姿勢を写さない。カードを回そうが動かそうが、
     // 押した瞬間の場所に踏みとどまって構え続ける。
     if (ok && !frozen) anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
@@ -879,8 +888,8 @@ function update(){
       // 刀身はモデルの +Y。正で前へ倒れる。立て気味に構え、後ろへ担ぎ、前へ斬る。
       // 立てて構える。ためで後ろへ担ぎ、打ち抜きで前へ振り下ろす。
       // 刀身（モデルの +Y）を向けたい方向へ。構えは斜め上、ためで後ろ、振りで前下。
-      // 構えは横。刀身をほぼ水平に、キャラの右へ寝かせる。
-      _dA.set(-0.88,  0.16,  0.44);
+      // 構えは刃先を正面へ。上を向いていたものを前へ倒した形。
+      _dA.set(-0.16,  0.10,  0.98);
       _dB.set(-0.55,  0.55, -0.63);
       _dC.set( 0.22, -0.36,  0.91);
       _dir.copy(_dA).lerp(_dB, w).lerp(_dC, c).normalize();
