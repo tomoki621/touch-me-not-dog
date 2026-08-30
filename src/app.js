@@ -409,9 +409,6 @@ function drawOcclusion(){
 const st = { t:0, swing:0, roar:0, guard:0, guardTarget:0, shakeT:0, autoCd:0 };
 const FACE_TRIM = 0;   // 正面の微調整（ラジアン）。ずれが残ればここだけ動かす。
 let btnGuard = 0;   // 盾ボタン
-let cardAngle = 0;  // カードの傾き（0=縦置き、±90°=横置き）
-let sideways = 0;   // 1なら横置き＝守備表示
-let snapIdx = 0;    // カードの傾きを90度単位に丸めた段数
 
 const doSword = () => { st.swing = 1; st.shakeT = 0.18; };
 const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; };
@@ -491,7 +488,7 @@ gate.addEventListener('click', boot);
 // ---------------------------------------------------------------- ループ
 const clock = new THREE.Clock();
 const _camLocal = new THREE.Vector3(), _handW = new THREE.Vector3();
-const _cardUp = new THREE.Vector3(), _v3 = new THREE.Vector3();
+const _v3 = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
@@ -539,50 +536,21 @@ function update(){
   if (found){
     everFound = true;
     anchor.group.updateWorldMatrix(true, false);
-    const e = anchor.group.matrixWorld.elements;
+    const m = anchor.group.matrixWorld.elements;
     let ok = true;
-    for (let i = 0; i < 16; i++) if (!Number.isFinite(e[i])) ok = false;
+    for (let i = 0; i < 16; i++) if (!Number.isFinite(m[i])) ok = false;
     if (ok) anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
-    // 遊戯王の作法どおり、カードを横に置いたら守備表示とみなす。
-    // カードの「上」がカメラから見てどちらを指しているかで縦横を判定する。
-    _cardUp.set(0,1,0).transformDirection(anchor.group.matrixWorld);
-    _cardUp.transformDirection(camera.matrixWorldInverse);
-    const a = Math.atan2(_cardUp.x, _cardUp.y);
-    if (Number.isFinite(a)){
-      let d = a - cardAngle;
-      while (d >  Math.PI) d -= Math.PI*2;
-      while (d < -Math.PI) d += Math.PI*2;
-      cardAngle += d * (1 - Math.exp(-8*dt));    // 揺れを均す
-    }
-    // 90度単位に丸める。中間の角度で細かく揺れないよう、中心付近でだけ切り替える。
-    const q = cardAngle / (Math.PI/2);
-    const nearest = Math.round(q);
-    if (Math.abs(q - nearest) < 0.35) snapIdx = ((nearest % 4) + 4) % 4;
-    sideways = (snapIdx % 2 === 1) ? 1 : 0;      // 奇数＝横置き＝守備表示
   }
-  // 台座をカードの法線まわりに回して、カードの傾きを打ち消す。
-  // stand.rotation は X→Y→Z の順に効くので、Y はカードの法線まわりになる。
-  //
-  // 段数の絶対値をそのまま使ってはいけない。画像座標系は Y が下向きなので、
-  // カードを普通に縦に置いた状態でも段数は 0 ではなく 2（＝180度）になる。
-  // それを打ち消しに回すと台座ごと裏返り、奥に置いたはずのキャラが手前へ出る。
-  // 見たいのは「縦から何度倒したか」だけなので、偶数段（縦置き）を基準にして
-  // 奇数段（横置き）のときだけ ±90度戻す。
-  const rel = (snapIdx % 2 === 0) ? 0 : ((snapIdx % 4 === 1) ? 1 : -1);
-  const snapTarget = -rel * (Math.PI/2);
-  let ds = snapTarget - stand.rotation.y;
-  while (ds >  Math.PI) ds -= Math.PI*2;
-  while (ds < -Math.PI) ds += Math.PI*2;
-  if (Number.isFinite(ds)) stand.rotation.y += ds * (1 - Math.exp(-9*dt));
 
   world.visible = everFound;
 
-  // 盾は「ボタンを押している」か「カードが横置き」で構える
-  st.guardTarget = Math.max(btnGuard, sideways > 0.5 ? 1 : 0);
+  // 盾はボタンだけで決める。カードの傾きから守備表示を読む仕組みは、
+  // 傾きの推定が揺れて姿勢が落ち着かなかったので外した。
+  st.guardTarget = btnGuard;
 
-  // 攻撃表示のときだけ、手が近づいたら自動で斬る。守備表示では盾に専念させる。
+  // 手が近づいたら自動で斬る
   st.autoCd = Math.max(0, st.autoCd - dt);
-  if (everFound && sideways < 0.5 && handSeen && handLostT < 0.4 && st.autoCd <= 0){
+  if (everFound && handSeen && handLostT < 0.4 && st.autoCd <= 0){
     _v3.set(0, HEAD_Y*0.55, 0).applyMatrix4(chara.matrixWorld).project(camera);
     const cx = (_v3.x*0.5 + 0.5)*innerWidth, cy = (-_v3.y*0.5 + 0.5)*innerHeight;
     const reach = Math.min(innerWidth, innerHeight)*0.32;
@@ -679,7 +647,7 @@ function update(){
   chara.rotation.z = st.guard*0.10;
   chara.position.set(
     st.guard*-0.10,
-    (1-e)*-0.12 + swingArc*0.07 + roarU*0.05 - st.guard*0.16 + (Math.random()-0.5)*st.shakeT*0.03,
+    Math.min(0, (1-e)*-0.12 - st.guard*0.16) + (Math.random()-0.5)*st.shakeT*0.02,   // 足を床より上げない
     STAND_Z + st.guard*0.08 + swingArc*0.10
   );
   const grow = baseScale;

@@ -50,7 +50,7 @@
     box-shadow:0 3px 14px var(--shadow);transition:transform .09s,background .12s}
   .act svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:1.7;
     stroke-linecap:round;stroke-linejoin:round}
-  .act:active,.act.hit{transform:scale(.9);background:var(--accent);color:#fff}
+  /* 押しても見た目を変えない。撮っている映像に操作の痕跡を残さないため。 */
   .act:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
   @media (prefers-reduced-motion: reduce){ #frame{animation:none;opacity:.85} }
