@@ -62,6 +62,7 @@ let everFound = false, lostT = 0, restarting = false;
 let cardAngle = 0;        // カードの面内の傾き
 let snapIdx = 0;          // それを90度単位に丸めた段
 let baseSnap = null;      // 最初に見つけたときの段。ここを基準に打ち消す。
+let angleInit = false;    // 一度でも実測値を入れたか
 
 // カードが見えている間は姿勢を写して追従し、見失ったら最後の姿勢のまま残す。
 // アンカーの子にすると見失った瞬間に消えるので、場面へ直接置いて行列だけ写す。
@@ -622,10 +623,18 @@ function update(){
     _cardUp.transformDirection(camera.matrixWorldInverse);
     const a = Math.atan2(_cardUp.x, _cardUp.y);
     if (Number.isFinite(a)){
-      let d = a - cardAngle;
-      while (d >  Math.PI) d -= Math.PI*2;
-      while (d < -Math.PI) d += Math.PI*2;
-      cardAngle += d * (1 - Math.exp(-8*dt));      // 手ぶれを均す
+      if (!angleInit){
+        // 初回は均さずそのまま入れる。0 から近づけている途中の値を基準に
+        // してしまうと、実際は縦置きなのに「2段ずれている」と誤認して
+        // 180度回してしまう。位置は手前へ、向きは背面へ飛ぶ。
+        cardAngle = a;
+        angleInit = true;
+      } else {
+        let d = a - cardAngle;
+        while (d >  Math.PI) d -= Math.PI*2;
+        while (d < -Math.PI) d += Math.PI*2;
+        cardAngle += d * (1 - Math.exp(-8*dt));    // 手ぶれを均す
+      }
       // 90度単位に丸める。中心付近でだけ段を切り替えて、斜めでもガタつかせない。
       const q = cardAngle / (Math.PI/2);
       const nearest = Math.round(q);
