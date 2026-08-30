@@ -516,7 +516,7 @@ function update(){
 
   // --- カードから出てくる
   const e = 1 - Math.pow(1 - spawnT, 3);
-  chara.visible = spawnT > 0.02;
+  chara.visible = found;   // 見つけたら必ず出す。演出の途中で消える余地を作らない。
   spawnRing.visible = spawnT > 0 && spawnT < 1;
   if (spawnRing.visible){
     spawnRing.scale.setScalar(0.4 + spawnT*2.2);
@@ -576,7 +576,7 @@ function update(){
   chara.rotation.z = st.guard*0.10;
   chara.position.set(
     st.guard*-0.10,
-    (1-e)*-0.45 + swingArc*0.07 + roarU*0.05 + (Math.random()-0.5)*st.shakeT*0.03,
+    (1-e)*-0.12 + swingArc*0.07 + roarU*0.05 + (Math.random()-0.5)*st.shakeT*0.03,
     st.guard*0.08 + swingArc*0.10
   );
   const grow = baseScale;

@@ -129,6 +129,14 @@
   <p id="note"></p>
 </div>
 
-<script src="app.js?h=463e20aaa8"></script>
+<script>
+// HTML は GitHub Pages に10分キャッシュされる。そのままだと更新しても古い JS を
+// 読み続けるので、版番号だけ毎回キャッシュ無しで取りに行き、それを付けて読み込む。
+// こうすると HTML が古くても中身は必ず最新になる。
+fetch('build.json', {cache:'no-store'})
+  .then(r => r.json())
+  .then(v => { const s = document.createElement('script'); s.src = 'app.js?h=' + v.h; document.body.appendChild(s); })
+  .catch(() => { const s = document.createElement('script'); s.src = 'app.js?t=' + Date.now(); document.body.appendChild(s); });
+</script>
 </body>
 </html>

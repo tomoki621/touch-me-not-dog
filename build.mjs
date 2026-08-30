@@ -15,9 +15,6 @@ execFileSync(esbuild, [
 const bundle = fs.readFileSync('app.js');
 const hash = createHash('sha256').update(bundle).digest('hex').slice(0, 10);
 
-let html = fs.readFileSync('index.html', 'utf8');
-html = html.replace(/<script src="app\.js[^"]*"><\/script>/,
-                    `<script src="app.js?h=${hash}"></script>`);
-fs.writeFileSync('index.html', html);
+fs.writeFileSync('build.json', JSON.stringify({ h: hash }));
 
 console.log('app.js ' + (bundle.length/1048576).toFixed(2) + ' MB  hash=' + hash);
