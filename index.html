@@ -62,17 +62,8 @@
   .act:active,.act.hit{transform:scale(.9);background:var(--accent);color:#fff}
   .act:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
-  .pop{position:fixed;pointer-events:none;z-index:6;transform:translate(-50%,-50%);
-    font-weight:800;font-size:30px;letter-spacing:.02em;white-space:nowrap;
-    text-shadow:0 2px 12px #000b;animation:pop .7s cubic-bezier(.2,.9,.3,1) forwards}
-  @keyframes pop{
-    0%{opacity:0;transform:translate(-50%,-50%) scale(.5) rotate(-8deg)}
-    22%{opacity:1;transform:translate(-50%,-64%) scale(1.15) rotate(3deg)}
-    100%{opacity:0;transform:translate(-50%,-130%) scale(1) rotate(0)}
-  }
-  @media (prefers-reduced-motion: reduce){
-    .pop{animation-duration:.4s}
-    #frame{animation:none;opacity:.85}
+  @media (prefers-reduced-motion: reduce){ #frame{animation:none;opacity:.85} }
+
   }
 
   /* カメラ許可はユーザー操作起点でないとブラウザが弾く。この1タップだけは消せない。 */

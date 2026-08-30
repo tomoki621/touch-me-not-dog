@@ -66,6 +66,7 @@ anchor.group.add(stand);          // カードに追従させる
 
 // カードの中心よりわずかに奥（印刷面の上辺側）へ寄せる。手前に余白ができて、
 // 手を伸ばす動きが入る余地が生まれる。stand 空間の -Z がカードの奥にあたる。
+const FACE_YAW = Math.PI;   // カードの下辺側を正面として構える
 const STAND_Z = 0.95;   // アンカーのYは画像座標系で下向き。奥は +Z 側になる。
 
 const chara = new THREE.Group();      // 立ち位置と向きを持つ入れ物
@@ -401,32 +402,11 @@ function drawOcclusion(){
 // リグが無いので腕は動かない。剣と盾は握りを支点に回し、体は全身で演技する。
 // 握り位置から生えたまま角度だけ変わるので、分離して浮くことはない。
 const st = { t:0, swing:0, roar:0, guard:0, guardTarget:0, shakeT:0 };
-let charaYaw = 0, autoYaw = 0;
+let charaYaw = 0;   // 2本指のひねりで足す向きの調整ぶん
 
-const WORD_SWORD  = ['ガッ！','シャキン','スパッ','だめ'];
-const WORD_ROAR   = ['グルルル','ギィッ','ウー…','いかく'];
-const WORD_SHIELD = ['ガードッ','させない','ムッ','ふせぐ'];
-const pick = a => a[(Math.random()*a.length)|0];
-const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-
-const _proj = new THREE.Vector3();
-function popWord(text, colorVar){
-  _proj.set(0, HEAD_Y, 0).applyMatrix4(chara.matrixWorld);
-  _proj.project(camera);
-  const x = (_proj.x*0.5+0.5)*innerWidth, y = (-_proj.y*0.5+0.5)*innerHeight;
-  const d = document.createElement('div');
-  d.className = 'pop';
-  d.textContent = text;
-  d.style.color = cssVar(colorVar);
-  d.style.left = THREE.MathUtils.clamp(x, 70, innerWidth-70) + 'px';
-  d.style.top  = THREE.MathUtils.clamp(y - 70, 50, innerHeight-90) + 'px';
-  document.body.appendChild(d);
-  setTimeout(() => d.remove(), 720);
-}
-
-const doSword = () => { st.swing = 1; st.shakeT = 0.18; popWord(pick(WORD_SWORD), '--accent'); };
-const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; popWord(pick(WORD_ROAR),  '--hot'); };
-const guardOn = () => { st.guardTarget = 1; if (st.guard < 0.2) popWord(pick(WORD_SHIELD), '--accent'); };
+const doSword = () => { st.swing = 1; st.shakeT = 0.18; };
+const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; };
+const guardOn = () => { st.guardTarget = 1; };
 const guardOff = () => { st.guardTarget = 0; };
 const flash = b => { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 130); };
 
@@ -576,38 +556,12 @@ function update(){
     spawnRing.material.opacity = (1-spawnT)*0.9;
   }
 
-  // --- 手のほうを向く。手が無ければカメラのほうを向く。
-  //
-  // カードを見失っている間はアンカーのワールド行列が退化し、その逆行列が NaN に
-  // なる。そこから作った角度を autoYaw に足し込むと、一度 NaN になった時点で
-  // 二度と戻らない。回転が NaN のスキンメッシュは全頂点が NaN になって消えるが、
-  // 落ち影は座標しか使わないので残る。「影だけ出てモデルが出ない」の正体がこれ。
-  // 追跡できている間だけ角度を更新し、非数が入ったら捨てる。
-  if (found){
-    let targetYaw;
-    if (handSeen && handLostT < 0.5){
-      ndc.x = (handPts[8].x/innerWidth)*2 - 1;
-      ndc.y = -(handPts[8].y/innerHeight)*2 + 1;
-      raycaster.setFromCamera(ndc, camera);
-      _handW.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, 3);
-      stand.worldToLocal(_handW);
-      targetYaw = Math.atan2(_handW.x, _handW.z);
-    } else {
-      _camLocal.setFromMatrixPosition(camera.matrixWorld);
-      stand.worldToLocal(_camLocal);
-      targetYaw = Math.atan2(_camLocal.x, _camLocal.z);
-    }
-    if (Number.isFinite(targetYaw)){
-      let dY = targetYaw - autoYaw;
-      while (dY >  Math.PI) dY -= Math.PI*2;
-      while (dY < -Math.PI) dY += Math.PI*2;
-      if (Number.isFinite(dY)) autoYaw += dY * (1 - Math.exp(-5*dt));
-    }
-  }
-  if (!Number.isFinite(autoYaw)) autoYaw = 0;
+  // --- 向きはカードに対して固定する。カメラや手を追わせると、立ち位置や
+  // 撮る角度によって毎回ちがう方を向いてしまう。カードの下辺側（印刷を読む人が
+  // いる側）を正面として構えさせ、ひねりの手動調整ぶんだけを足す。
   if (!Number.isFinite(charaYaw)) charaYaw = 0;
   if (!Number.isFinite(baseScale) || baseScale <= 0) baseScale = BASE_SCALE;
-  chara.rotation.y = autoYaw + charaYaw;
+  chara.rotation.y = FACE_YAW + charaYaw;
 
   if (rigged){
     // --- ボーンを直接回す。武器は手のボーンの子なので勝手に付いてくる。
