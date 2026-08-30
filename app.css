@@ -43,18 +43,6 @@
   .act:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
 
-  /* 記録して開始。撮りたいときだけ押す。押さなければ今までどおり。 */
-  #grec{-webkit-appearance:none;appearance:none;font:inherit;font-size:14px;
-    border:1px solid var(--line);border-radius:999px;background:transparent;
-    color:var(--fg);padding:12px 24px;cursor:pointer}
-  #grec:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-
-  /* 記録中だけ出す停止ボタン。撮っている映像の邪魔にならないよう上の隅に置く。 */
-  #recwrap{position:fixed;right:calc(14px + env(safe-area-inset-right,0px));
-    top:calc(14px + env(safe-area-inset-top,0px));z-index:6}
-  #aStop{color:var(--hot)}
-  #aStop[hidden]{display:none}
-
   /* カメラ許可はユーザー操作起点でないとブラウザが弾く。この1タップだけは消せない。 */
   #gate{position:fixed;inset:0;z-index:9;background:var(--bg);cursor:pointer;
     display:flex;flex-direction:column;align-items:center;justify-content:center;

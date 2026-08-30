@@ -14,7 +14,6 @@
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:20px;padding:34px 28px;text-align:center}
   #acts,#dbg{opacity:0}
-  #aStop[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -35,19 +34,12 @@
   </button>
 </div>
 
-<div id="recwrap">
-  <button class="act" id="aStop" aria-label="記録をとめて保存" hidden>
-    <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></svg>
-  </button>
-</div>
-
 <pre id="dbg" style="display:none"></pre>
 
 <div id="gate">
   <h1>触らせてくれない</h1>
   <p>ルイーズのカードにかざすと、その上に立ちます。<br>盾・威嚇・剣で追い払わせて撮ってください。</p>
   <div id="tapme">画面をタップして開始</div>
-  <button id="grec" type="button">記録してはじめる</button>
   <p id="note"></p>
 </div>
 
