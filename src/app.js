@@ -403,11 +403,14 @@ function drawOcclusion(){
 // 握り位置から生えたまま角度だけ変わるので、分離して浮くことはない。
 const st = { t:0, swing:0, roar:0, guard:0, guardTarget:0, shakeT:0 };
 let charaYaw = 0;   // 2本指のひねりで足す向きの調整ぶん
+let btnGuard = 0;   // 盾ボタン
+let cardAngle = 0;  // カードの傾き（0=縦置き、±90°=横置き）
+let sideways = 0;   // 横置き＝守備表示とみなす度合い
 
 const doSword = () => { st.swing = 1; st.shakeT = 0.18; };
 const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; };
-const guardOn = () => { st.guardTarget = 1; };
-const guardOff = () => { st.guardTarget = 0; };
+const guardOn = () => { btnGuard = 1; };
+const guardOff = () => { btnGuard = 0; };
 const flash = b => { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 130); };
 
 $('aSword').addEventListener('click', doSword);
@@ -488,6 +491,7 @@ gate.addEventListener('click', boot);
 // ---------------------------------------------------------------- ループ
 const clock = new THREE.Clock();
 const _camLocal = new THREE.Vector3(), _handW = new THREE.Vector3();
+const _cardUp = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
@@ -532,7 +536,24 @@ function update(){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
 
-  if (found) everFound = true;
+  if (found){
+    everFound = true;
+    // 遊戯王の作法どおり、カードを横に置いたら守備表示とみなす。
+    // カードの「上」がカメラから見てどちらを指しているかで縦横を判定する。
+    _cardUp.set(0,1,0).transformDirection(anchor.group.matrixWorld);
+    _cardUp.transformDirection(camera.matrixWorldInverse);
+    const a = Math.atan2(_cardUp.x, _cardUp.y);
+    if (Number.isFinite(a)){
+      let d = a - cardAngle;
+      while (d >  Math.PI) d -= Math.PI*2;
+      while (d < -Math.PI) d += Math.PI*2;
+      cardAngle += d * (1 - Math.exp(-8*dt));    // 揺れを均す
+    }
+    const t = Math.abs(Math.sin(cardAngle));      // 縦=0, 横=1
+    sideways += ((t > 0.72 ? 1 : 0) - sideways) * (1 - Math.exp(-6*dt));
+  }
+  // 盾は「ボタンを押している」か「カードが横置き」で構える
+  st.guardTarget = Math.max(btnGuard, sideways > 0.5 ? 1 : 0);
   if (everFound && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
   st.swing  = Math.max(0, st.swing  - dt*2.6);
@@ -561,21 +582,47 @@ function update(){
   // いる側）を正面として構えさせ、ひねりの手動調整ぶんだけを足す。
   if (!Number.isFinite(charaYaw)) charaYaw = 0;
   if (!Number.isFinite(baseScale) || baseScale <= 0) baseScale = BASE_SCALE;
-  chara.rotation.y = FACE_YAW + charaYaw;
+  chara.rotation.y = FACE_YAW + charaYaw - cardAngle;
 
   if (rigged){
     // --- ボーンを直接回す。武器は手のボーンの子なので勝手に付いてくる。
+    // 技どうしが同じ骨を取り合うので、骨ごとに角度を足し合わせてから一度だけ渡す。
     chara.getWorldQuaternion(_cq);
+    const g = st.guard, r = roarU;
     const u = swingU;
-    const wind = u < 0.30 ? u/0.30 : 1 - (u-0.30)/0.70;          // 振りかぶり
-    const chop = u < 0.30 ? 0 : Math.sin((u-0.30)/0.70*Math.PI); // 斬り下ろし
+    const wind = u < 0.32 ? u/0.32 : 1 - (u-0.32)/0.68;           // 振りかぶり
+    const chop = u < 0.32 ? 0 : Math.sin((u-0.32)/0.68*Math.PI);  // 斬り下ろし
     const on = st.swing > 0.001 ? 1 : 0;
-    boneSet('RightArm',     [[1,0,0, on*(-1.40*wind + 2.40*chop)]]);
-    boneSet('RightForeArm', [[1,0,0, on*(-0.70*wind + 1.30*chop)]]);
-    boneSet('LeftArm',      [[1,0,0, st.guard*1.15], [0,1,0, -st.guard*0.55]]);
-    boneSet('LeftForeArm',  [[1,0,0, st.guard*0.95]]);
-    boneSet('Head',         [[1,0,0, HEAD_UP - roarU*0.45]]);
-    boneSet('Spine02',      [[1,0,0, -roarU*0.15 + swingArc*0.12]]);
+    const w = on*wind, c = on*chop;
+
+    // 斬撃は真上から落とすと硬いので、肩を開きながら斜めに振り抜く。
+    // X軸で上下、Z軸で内外に倒し、体のひねりを少し遅らせて添える。
+    boneSet('RightArm', [
+      [1,0,0, -1.55*w + 2.30*c + r*0.15],
+      [0,0,1, -0.55*w + 1.00*c - r*1.05],   // 咆哮では外へ開く
+      [0,1,0,  0.25*w - 0.35*c]
+    ]);
+    boneSet('RightForeArm', [[1,0,0, -0.95*w + 1.25*c], [0,0,1, r*0.35]]);
+
+    // 守備は盾を体の前へ出す。腕だけでなく肩ごと前に入れる。
+    boneSet('LeftArm', [
+      [1,0,0, g*1.30 + r*0.15],
+      [0,1,0, -g*0.80],
+      [0,0,1, g*0.35 + r*1.05]              // 咆哮では外へ開く
+    ]);
+    boneSet('LeftForeArm', [[1,0,0, g*1.15], [0,1,0, -g*0.35], [0,0,1, -r*0.35]]);
+
+    // 腰を落とす。膝を曲げ、股関節を前へ送る。
+    boneSet('LeftUpLeg',  [[1,0,0, g*0.50]]);
+    boneSet('RightUpLeg', [[1,0,0, g*0.50]]);
+    boneSet('LeftLeg',    [[1,0,0, -g*0.95]]);
+    boneSet('RightLeg',   [[1,0,0, -g*0.95]]);
+
+    // 体幹。斬撃でひねり、守備で前に屈み、咆哮で反る。
+    boneSet('Spine',   [[1,0,0, g*0.22 - r*0.10]]);
+    boneSet('Spine01', [[0,1,0, 0.30*w - 0.40*c], [1,0,0, g*0.14]]);
+    boneSet('Spine02', [[0,1,0, 0.22*w - 0.30*c], [1,0,0, -r*0.28 + c*0.15]]);
+    boneSet('Head',    [[1,0,0, HEAD_UP - r*0.55 + g*0.20]]);
   } else {
     // --- リグが無いときは握りを支点に武器だけ回す
     swordPivot.rotation.z = -0.18 + Math.sin(st.t*1.7)*0.05 - swingArc*2.3;
@@ -596,7 +643,7 @@ function update(){
   chara.rotation.z = st.guard*0.10;
   chara.position.set(
     st.guard*-0.10,
-    (1-e)*-0.12 + swingArc*0.07 + roarU*0.05 + (Math.random()-0.5)*st.shakeT*0.03,
+    (1-e)*-0.12 + swingArc*0.07 + roarU*0.05 - st.guard*0.16 + (Math.random()-0.5)*st.shakeT*0.03,
     STAND_Z + st.guard*0.08 + swingArc*0.10
   );
   const grow = baseScale;
