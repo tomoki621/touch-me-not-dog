@@ -57,11 +57,10 @@ const mindar = new MindARThree({
   maxTrack: 1,
   warmupTolerance: 1,      // 既定の5は渋い。0にすると再検出しなくなるので1にする。
   missTolerance: 30,       // 粘りすぎると崩れた姿勢を抱え続ける。
-  // 平滑化。小さいほど滑らかだが、正しい姿勢に落ち着くまで時間がかかる。
-  // 強くかけすぎて、水平になるのに数十秒かかっていた。潰れた行列は下で弾いて
-  // いるので、ここは追いつきを優先してよい。
-  filterMinCF: 0.006,
-  filterBeta: 0.08
+  // MindAR 側の平滑化は中庸に。細かいノイズだけ取る。
+  // 追いつきの速さは、こちらで誤差に応じて変える（下の world の更新）。
+  filterMinCF: 0.002,
+  filterBeta: 0.02
 });
 const { renderer, scene, camera } = mindar;
 renderer.shadowMap.enabled = true;
@@ -616,6 +615,8 @@ const _v3 = new THREE.Vector3(), _cardUp = new THREE.Vector3();
 const _qh = new THREE.Quaternion(), _qc = new THREE.Quaternion();
 const _qh2 = new THREE.Quaternion(), _ws = new THREE.Vector3();
 const _pA = new THREE.Vector3(), _pB = new THREE.Vector3();
+const _tp = new THREE.Vector3(), _ts = new THREE.Vector3();
+const _tq = new THREE.Quaternion();
 const _dA = new THREE.Vector3(), _dB = new THREE.Vector3();
 const _dC = new THREE.Vector3(), _dir = new THREE.Vector3();
 const _upY = new THREE.Vector3(0, 1, 0);
@@ -725,7 +726,25 @@ function update(){
     }
     // 防御中はカードの姿勢を写さない。カードを回そうが動かそうが、
     // 押した瞬間の場所に踏みとどまって構え続ける。
-    if (ok && !frozen) anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
+    if (ok && !frozen){
+      anchor.group.matrixWorld.decompose(_tp, _tq, _ts);
+      if (!everFound){
+        world.position.copy(_tp);
+        world.quaternion.copy(_tq);
+      } else {
+        // ずれが大きいときは素早く寄せ、小さいときは滑らかに保つ。
+        // 速さと安定のどちらかを選ぶ必要がなくなる。
+        const dp = world.position.distanceTo(_tp);
+        const da = world.quaternion.angleTo(_tq);
+        const fast = (dp > 0.30 || da > 0.45);
+        const k = 1 - Math.exp(-(fast ? 20 : 6) * dt);
+        world.position.lerp(_tp, k);
+        world.quaternion.slerp(_tq, k);
+      }
+      // 大きさは常に 1。カード追跡の姿勢推定は向きと位置だけで、伸縮は含まない。
+      // 行列から取り出すと推定誤差がそのまま大きさのぶれになる。
+      world.scale.set(1, 1, 1);
+    }
 
     // カードの面内の回転だけを測る。カードを回す操作は攻守の切り替えであって、
     // キャラを動かす操作ではない。回した分をあとで打ち消して、その場に留める。
