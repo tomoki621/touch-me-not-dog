@@ -57,8 +57,11 @@ const mindar = new MindARThree({
   maxTrack: 1,
   warmupTolerance: 1,      // 既定の5は渋い。0にすると再検出しなくなるので1にする。
   missTolerance: 30,       // 粘りすぎると崩れた姿勢を抱え続ける。
-  filterMinCF: 0.0008,     // 小さいほど滑らかだが遅れる。暴れるので少し戻す。
-  filterBeta: 0.005
+  // 平滑化。小さいほど滑らかだが、正しい姿勢に落ち着くまで時間がかかる。
+  // 強くかけすぎて、水平になるのに数十秒かかっていた。潰れた行列は下で弾いて
+  // いるので、ここは追いつきを優先してよい。
+  filterMinCF: 0.006,
+  filterBeta: 0.08
 });
 const { renderer, scene, camera } = mindar;
 renderer.shadowMap.enabled = true;
@@ -718,7 +721,7 @@ function update(){
       const sy = Math.hypot(m[4], m[5], m[6]);
       const sz = Math.hypot(m[8], m[9], m[10]);
       const lo = Math.min(sx, sy, sz), hi = Math.max(sx, sy, sz);
-      if (lo < 1e-4 || hi / lo > 1.25) ok = false;
+      if (lo < 1e-4 || hi / lo > 1.18) ok = false;
     }
     // 防御中はカードの姿勢を写さない。カードを回そうが動かそうが、
     // 押した瞬間の場所に踏みとどまって構え続ける。
