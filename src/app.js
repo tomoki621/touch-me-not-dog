@@ -235,6 +235,18 @@ load('models/rouise.glb', (root) => {
   const ws = new THREE.Vector3();
   if (bones.RightHand){ bones.RightHand.getWorldScale(ws); swordPivot.scale.setScalar(SWORD_LEN/ws.x); }
   if (bones.LeftHand){  bones.LeftHand.getWorldScale(ws);  shieldPivot.scale.setScalar(SHIELD_LEN/ws.x); }
+
+  // 武器を拳の中心へ据える。骨は手首にあるので、そのままだと手首に刺さる。
+  root.updateMatrixWorld(true);
+  const c = new THREE.Vector3();
+  [['RightHand', swordPivot], ['LeftHand', shieldPivot]].forEach(([bn, pv]) => {
+    if (!bones[bn]) return;
+    if (!fistCenter(root, bn, c)){ console.warn('[grip] 拳が見つかりません:', bn); return; }
+    c.applyMatrix4(root.matrixWorld);     // 素の姿勢の座標 → ワールド
+    bones[bn].worldToLocal(c);            // → 手の骨のローカル
+    pv.position.copy(c);
+    console.log('[grip] ' + bn + ' の拳へ ' + c.toArray().map(v => v.toFixed(3)).join(', '));
+  });
 });
 load('models/sword.glb', (root) => {
   fit(root, 1.0, SWORD_GRIP, 0);   // 柄を握る位置が原点。実寸は swordPivot 側で決める。
@@ -600,6 +612,34 @@ function aimBone(name, childName, dir){
   b.quaternion.premultiply(_qp.clone().invert().multiply(_q3).multiply(_qp));
 }
 
+// 手の骨は手首にあり、拳はそこから離れている。推測でずらすと必ず外すので、
+// その骨に強く結ばれた頂点の重心＝拳の中心を求めて、そこに武器を置く。
+// モデルを差し替えても自動で追い直せる。
+function fistCenter(root, boneName, out){
+  let found = false;
+  root.traverse(o => {
+    if (found || !o.isSkinnedMesh || !o.skeleton) return;
+    const bi = o.skeleton.bones.findIndex(b => b.name === boneName);
+    if (bi < 0) return;
+    const pos = o.geometry.attributes.position;
+    const si  = o.geometry.attributes.skinIndex;
+    const sw  = o.geometry.attributes.skinWeight;
+    if (!pos || !si || !sw) return;
+    let n = 0;
+    out.set(0, 0, 0);
+    for (let i = 0; i < pos.count; i++){
+      let w = 0;
+      if (si.getX(i) === bi) w += sw.getX(i);
+      if (si.getY(i) === bi) w += sw.getY(i);
+      if (si.getZ(i) === bi) w += sw.getZ(i);
+      if (si.getW(i) === bi) w += sw.getW(i);
+      if (w > 0.6){ out.x += pos.getX(i); out.y += pos.getY(i); out.z += pos.getZ(i); n++; }
+    }
+    if (n > 0){ out.divideScalar(n); found = true; }
+  });
+  return found;
+}
+
 function gripShift(handName, foreName, pivot, dist){
   const hb = bones[handName], fb = bones[foreName];
   if (!hb || !fb) return;
@@ -844,8 +884,6 @@ function update(){
     aimBone('RightForeArm', 'RightHand', _dir);
     chara.updateMatrixWorld(true);
 
-    gripShift('RightHand', 'RightForeArm', swordPivot,  GRIP_OUT);
-    gripShift('LeftHand',  'LeftForeArm',  shieldPivot, SHIELD_OUT);
     if (bones.RightHand){
       // 刀身はモデルの +Y。正で前へ倒れる。立て気味に構え、後ろへ担ぎ、前へ斬る。
       // 立てて構える。ためで後ろへ担ぎ、打ち抜きで前へ振り下ろす。
