@@ -134,10 +134,10 @@ const HEAD_UP = -0.26;   // X軸まわりは正が前傾・下向き。上を向
 const HEAD_Y = 1.45;                              // 描き文字とエフェクトの高さ
 const HAND_R = new THREE.Vector3( 0.46, 0.86, 0.10);   // 剣を持つ手
 const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
-const SWORD_LEN  = 1.05;      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
+const SWORD_LEN  = 2.10;   // 倍に      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
 const SHIELD_LEN = 1.25;
 const SWORD_GRIP = 0.20;      // 柄の中ほどを握る
-const SHIELD_PUSH = 0.58;   // 守備で顔にめり込むので深く前へ
+const SHIELD_PUSH = 0.18;   // 盾を逃がすのではなく、守備で腕を前へ出して避ける
 const GRIP_OUT  = 0.085;   // 手首から拳へずらす量。骨は手首にあるので、そのままだと刺さる。
 const SHIELD_OUT = 0.055;   // 盾を面の側へ逃がす量。守備で顔がめり込むので深めに。     // 盾を手から外へ逃がす量。拳が面から出ないように。
 const LEAN_FIX = 0.060;       // モデル自体が3.4度うしろに傾いているのを起こす
@@ -236,11 +236,13 @@ load('models/rouise.glb', (root) => {
   if (bones.RightHand){ bones.RightHand.getWorldScale(ws); swordPivot.scale.setScalar(SWORD_LEN/ws.x); }
   if (bones.LeftHand){  bones.LeftHand.getWorldScale(ws);  shieldPivot.scale.setScalar(SHIELD_LEN/ws.x); }
 
-  // 拳の中心。手の骨のローカル座標で、スキンのウェイトから手元で算出した値。
-  // 骨は手首にあり、そのローカル系は Armature の 0.01 倍のせいで約100倍の尺度になる。
-  // 実行時に変換すると狂うので、求めた値をそのまま置く。
-  if (bones.RightHand) swordPivot.position.set(  3.764, 16.171, -0.924);
-  if (bones.LeftHand)  shieldPivot.position.set(-3.724, 15.854, -0.503);
+  // 手の骨のローカル座標。Armature の 0.01 倍のせいで尺度が約100倍になるので、
+  // 実行時に変換せず、手元で算出した値をそのまま置く。
+  // この系の向き： +X = キャラの左、+Y = 下、+Z = 後ろ（右手の骨で実測）。
+  // 剣は拳の外接箱の中心へ。重心より少し下がった、握りの穴のあたり。
+  if (bones.RightHand) swordPivot.position.set(2.73, 14.18, -0.30);
+  // 盾は通常時の見え方が正しかったので、骨の原点のままにする。
+  if (bones.LeftHand)  shieldPivot.position.set(0, 0, 0);
 });
 load('models/sword.glb', (root) => {
   fit(root, 1.0, SWORD_GRIP, 0);   // 柄を握る位置が原点。実寸は swordPivot 側で決める。
@@ -804,12 +806,12 @@ function update(){
 
     // 左腕。守備では前へ出す（前＝負）。上へ上げるのではない。
     boneSet('LeftArm', [
-      [1,0,0, -g*1.35 + r*0.25],
+      [1,0,0, -g*1.85 + r*0.25],   // 守備は腕を深く前へ。盾を逃がすより確実。
       [0,1,0, -g*1.35 - r*0.18],   // 負で体の正面へ寄る。守備では腹の前まで持ってくる。
       [0,0,1,  g*0.15 + r*0.72]
     ]);
     boneSet('LeftForeArm', [
-      [1,0,0, -g*1.05],
+      [1,0,0, -g*1.45],
       [0,1,0, -g*0.80],
       [0,0,1, -r*0.18]
     ]);
