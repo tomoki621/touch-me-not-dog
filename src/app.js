@@ -615,7 +615,9 @@ function update(){
     const m = anchor.group.matrixWorld.elements;
     let ok = true;
     for (let i = 0; i < 16; i++) if (!Number.isFinite(m[i])) ok = false;
-    if (ok) anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
+    // 防御中はカードの姿勢を写さない。カードを回そうが動かそうが、
+    // 押した瞬間の場所に踏みとどまって構え続ける。
+    if (ok && !btnGuard) anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
 
     // カードの面内の回転だけを測る。カードを回す操作は攻守の切り替えであって、
     // キャラを動かす操作ではない。回した分をあとで打ち消して、その場に留める。

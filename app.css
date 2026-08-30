@@ -28,7 +28,7 @@
   #occ{position:fixed;inset:0;pointer-events:none;z-index:2}
   #touch{position:fixed;inset:0;z-index:3;touch-action:none}
 
-  #acts{position:fixed;right:calc(14px + env(safe-area-inset-right,0px));top:50%;z-index:5;
+  #acts{position:fixed;right:calc(14px + env(safe-area-inset-right,0px));top:66%;z-index:5;
     transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;
     opacity:0;pointer-events:none;transition:opacity .45s}
   #acts.on{opacity:1;pointer-events:auto}
