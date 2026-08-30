@@ -59,6 +59,9 @@ const anchor = mindar.addAnchor(0);
 // キャラの Y-up がカードの法線に揃い、以降は素直な Y-up 空間で書ける。
 // 単位はカードの横幅＝1（実物のルイーズは 59mm 幅）。
 let everFound = false, lostT = 0, restarting = false;
+let cardAngle = 0;        // カードの面内の傾き
+let snapIdx = 0;          // それを90度単位に丸めた段
+let baseSnap = null;      // 最初に見つけたときの段。ここを基準に打ち消す。
 
 // カードが見えている間は姿勢を写して追従し、見失ったら最後の姿勢のまま残す。
 // アンカーの子にすると見失った瞬間に消えるので、場面へ直接置いて行列だけ写す。
@@ -72,7 +75,7 @@ world.add(stand);
 // カードの中心よりわずかに奥（印刷面の上辺側）へ寄せる。手前に余白ができて、
 // 手を伸ばす動きが入る余地が生まれる。stand 空間の -Z がカードの奥にあたる。
 const FACE_YAW = Math.PI;   // カードの下辺側（読む人がいる側）を正面として構える
-const STAND_Z = 0.95;   // アンカーのYは画像座標系で下向き。奥は +Z 側になる。
+const STAND_Z = 0.72;   // アンカーのYは画像座標系で下向き。奥は +Z 側になる。
 
 const chara = new THREE.Group();      // 立ち位置と向きを持つ入れ物
 stand.add(chara);
@@ -560,7 +563,7 @@ gate.addEventListener('click', boot);
 // ---------------------------------------------------------------- ループ
 const clock = new THREE.Clock();
 const _camLocal = new THREE.Vector3(), _handW = new THREE.Vector3();
-const _v3 = new THREE.Vector3();
+const _v3 = new THREE.Vector3(), _cardUp = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
@@ -612,6 +615,34 @@ function update(){
     let ok = true;
     for (let i = 0; i < 16; i++) if (!Number.isFinite(m[i])) ok = false;
     if (ok) anchor.group.matrixWorld.decompose(world.position, world.quaternion, world.scale);
+
+    // カードの面内の回転だけを測る。カードを回す操作は攻守の切り替えであって、
+    // キャラを動かす操作ではない。回した分をあとで打ち消して、その場に留める。
+    _cardUp.set(0,1,0).transformDirection(anchor.group.matrixWorld);
+    _cardUp.transformDirection(camera.matrixWorldInverse);
+    const a = Math.atan2(_cardUp.x, _cardUp.y);
+    if (Number.isFinite(a)){
+      let d = a - cardAngle;
+      while (d >  Math.PI) d -= Math.PI*2;
+      while (d < -Math.PI) d += Math.PI*2;
+      cardAngle += d * (1 - Math.exp(-8*dt));      // 手ぶれを均す
+      // 90度単位に丸める。中心付近でだけ段を切り替えて、斜めでもガタつかせない。
+      const q = cardAngle / (Math.PI/2);
+      const nearest = Math.round(q);
+      if (Math.abs(q - nearest) < 0.35) snapIdx = ((nearest % 4) + 4) % 4;
+      // 最初に見つけた向きを基準にする。絶対値で取ると画像座標系の都合で
+      // 縦置きでも180度ずれるので、必ず相対で測る。
+      if (baseSnap === null) baseSnap = snapIdx;
+    }
+  }
+
+  // 面内の回転を打ち消す。stand.rotation は X→Y→Z の順なので Y が法線まわり。
+  if (baseSnap !== null){
+    const rel = (((snapIdx - baseSnap) % 4) + 4) % 4;
+    let ds = -rel * (Math.PI/2) - stand.rotation.y;
+    while (ds >  Math.PI) ds -= Math.PI*2;
+    while (ds < -Math.PI) ds += Math.PI*2;
+    if (Number.isFinite(ds)) stand.rotation.y += ds * (1 - Math.exp(-10*dt));
   }
 
   world.visible = everFound;
