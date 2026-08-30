@@ -521,11 +521,19 @@ function boneSet(name, rots){
   if (!b) return;
   b.quaternion.copy(rest[name]);
   if (!rots) return;
+  const _guard = rest[name];
   b.parent.getWorldQuaternion(_pq).invert();
   for (const r of rots){
     if (!r[3]) continue;
-    _axis.set(r[0], r[1], r[2]).applyQuaternion(_cq).applyQuaternion(_pq).normalize();
+    _axis.set(r[0], r[1], r[2]).applyQuaternion(_cq).applyQuaternion(_pq);
+    if (_axis.lengthSq() < 1e-12) continue;
+    _axis.normalize();
     b.quaternion.premultiply(_q.setFromAxisAngle(_axis, r[3]));
+  }
+  // 非数が混ざるとスキンメッシュ全体が消えるので、その場で素の姿勢に戻す
+  const q = b.quaternion;
+  if (!(Number.isFinite(q.x) && Number.isFinite(q.y) && Number.isFinite(q.z) && Number.isFinite(q.w))){
+    b.quaternion.copy(_guard);
   }
 }
 
@@ -544,20 +552,7 @@ function update(){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
 
-  if (found){ everFound = true; lostT = 0; }
-  else if (everFound){
-    // 見失ったまま戻らないことがある。一定時間で追跡を作り直して復帰させる。
-    lostT += dt;
-    if (lostT > 2.5 && !restarting){
-      restarting = true;
-      Promise.resolve()
-        .then(() => mindar.stop())
-        .then(() => mindar.start())
-        .then(() => { renderer.setAnimationLoop(tick); })
-        .catch(() => {})
-        .then(() => { restarting = false; lostT = 0; });
-    }
-  }
+  if (found) everFound = true;
   if (everFound && spawnT < 1) spawnT = Math.min(1, spawnT + dt/0.7);
 
   st.swing  = Math.max(0, st.swing  - dt*2.6);
@@ -582,23 +577,36 @@ function update(){
   }
 
   // --- 手のほうを向く。手が無ければカメラのほうを向く。
-  let targetYaw;
-  if (handSeen && handLostT < 0.5){
-    ndc.x = (handPts[8].x/innerWidth)*2 - 1;
-    ndc.y = -(handPts[8].y/innerHeight)*2 + 1;
-    raycaster.setFromCamera(ndc, camera);
-    _handW.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, 3);
-    stand.worldToLocal(_handW);
-    targetYaw = Math.atan2(_handW.x, _handW.z);
-  } else {
-    _camLocal.setFromMatrixPosition(camera.matrixWorld);
-    stand.worldToLocal(_camLocal);
-    targetYaw = Math.atan2(_camLocal.x, _camLocal.z);
+  //
+  // カードを見失っている間はアンカーのワールド行列が退化し、その逆行列が NaN に
+  // なる。そこから作った角度を autoYaw に足し込むと、一度 NaN になった時点で
+  // 二度と戻らない。回転が NaN のスキンメッシュは全頂点が NaN になって消えるが、
+  // 落ち影は座標しか使わないので残る。「影だけ出てモデルが出ない」の正体がこれ。
+  // 追跡できている間だけ角度を更新し、非数が入ったら捨てる。
+  if (found){
+    let targetYaw;
+    if (handSeen && handLostT < 0.5){
+      ndc.x = (handPts[8].x/innerWidth)*2 - 1;
+      ndc.y = -(handPts[8].y/innerHeight)*2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      _handW.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, 3);
+      stand.worldToLocal(_handW);
+      targetYaw = Math.atan2(_handW.x, _handW.z);
+    } else {
+      _camLocal.setFromMatrixPosition(camera.matrixWorld);
+      stand.worldToLocal(_camLocal);
+      targetYaw = Math.atan2(_camLocal.x, _camLocal.z);
+    }
+    if (Number.isFinite(targetYaw)){
+      let dY = targetYaw - autoYaw;
+      while (dY >  Math.PI) dY -= Math.PI*2;
+      while (dY < -Math.PI) dY += Math.PI*2;
+      if (Number.isFinite(dY)) autoYaw += dY * (1 - Math.exp(-5*dt));
+    }
   }
-  let dY = targetYaw - autoYaw;
-  while (dY >  Math.PI) dY -= Math.PI*2;
-  while (dY < -Math.PI) dY += Math.PI*2;
-  autoYaw += dY * (1 - Math.exp(-5*dt));
+  if (!Number.isFinite(autoYaw)) autoYaw = 0;
+  if (!Number.isFinite(charaYaw)) charaYaw = 0;
+  if (!Number.isFinite(baseScale) || baseScale <= 0) baseScale = BASE_SCALE;
   chara.rotation.y = autoYaw + charaYaw;
 
   if (rigged){
