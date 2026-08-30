@@ -134,7 +134,8 @@ const HEAD_UP = -0.26;   // X軸まわりは正が前傾・下向き。上を向
 const HEAD_Y = 1.45;                              // 描き文字とエフェクトの高さ
 const HAND_R = new THREE.Vector3( 0.46, 0.86, 0.10);   // 剣を持つ手
 const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
-const SWORD_LEN  = 2.10;   // 倍に      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
+const SWORD_LEN  = 1.58;   // 1.5倍
+const SWORD_ROLL = Math.PI/2;   // 刀身の軸まわりのひねり。平たい面の向きを決める。      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
 const SHIELD_LEN = 1.25;
 const SWORD_GRIP = 0.20;      // 柄の中ほどを握る
 const SHIELD_PUSH = 0.18;   // 盾を逃がすのではなく、守備で腕を前へ出して避ける
@@ -592,6 +593,7 @@ const _pA = new THREE.Vector3(), _pB = new THREE.Vector3();
 const _dA = new THREE.Vector3(), _dB = new THREE.Vector3();
 const _dC = new THREE.Vector3(), _dir = new THREE.Vector3();
 const _upY = new THREE.Vector3(0, 1, 0);
+const _qRoll = new THREE.Quaternion();
 // 骨の節を、指定した向きへ向ける。chara 空間は +X=キャラの左、+Y=上、+Z=正面。
 // 角度の符号を積み上げると取り違えるので、向きそのものをベクトルで書く。
 const _dirW = new THREE.Vector3(), _q3 = new THREE.Quaternion(), _qp = new THREE.Quaternion();
@@ -860,7 +862,11 @@ function update(){
       _dB.set(-0.30,  0.62, -0.72);
       _dC.set( 0.22, -0.36,  0.91);
       _dir.copy(_dA).lerp(_dB, w).lerp(_dC, c).normalize();
+      // 刀身をこの向きへ。ただしこれだけだと軸まわりのひねりが定まらず、
+      // 平たい面がどちらを向くかは成り行きになる。明示的に回して横へ倒す。
       _q2.setFromUnitVectors(_upY, _dir);
+      _qRoll.setFromAxisAngle(_upY, SWORD_ROLL);
+      _q2.multiply(_qRoll);
       bones.RightHand.getWorldQuaternion(_qh).invert();
       swordPivot.quaternion.copy(_qh).multiply(_qc).multiply(_q2);
     }
