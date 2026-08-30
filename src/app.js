@@ -46,8 +46,8 @@ const mindar = new MindARThree({
   maxTrack: 1,
   warmupTolerance: 1,      // 既定の5は渋い。0にすると再検出しなくなるので1にする。
   missTolerance: 60,       // 少々見失っても粘る。消えるほうが困る。
-  filterMinCF: 0.0001,     // 小さいほど追従が滑らか
-  filterBeta: 0.001
+  filterMinCF: 0.0025,     // 小さいほど滑らかだが遅れる。追いつきを優先する。
+  filterBeta: 0.012
 });
 const { renderer, scene, camera } = mindar;
 renderer.shadowMap.enabled = true;
@@ -130,14 +130,14 @@ stand.add(rim);
 // ---------------------------------------------------------------- モデル
 // Meshy は書き出しをどれも同じ箱に正規化するので、3体とも高さ 1.9 で出てくる。
 // 背丈と握り位置はこちらで組み直す。すべて「キャラの背丈＝1.9」基準。
-const HEAD_UP = 0.14;    // 正で顔が上を向く（headfront の骨の位置から実測）   // カメラは上から見下ろすので、頭を少し上向きに
+const HEAD_UP = 0.26;    // 正で顔が上を向く（headfront の骨の位置から実測）   // カメラは上から見下ろすので、頭を少し上向きに
 const HEAD_Y = 1.45;                              // 描き文字とエフェクトの高さ
 const HAND_R = new THREE.Vector3( 0.46, 0.86, 0.10);   // 剣を持つ手
 const HAND_L = new THREE.Vector3(-0.46, 0.86, 0.10);   // 盾を持つ手
-const SWORD_LEN  = 1.15;      // 身長の約6割。設定画の比率に合わせた。
-const SHIELD_LEN = 0.82;      // 同じく約4割。小さすぎて拳がはみ出していた。
-const SWORD_GRIP = 0.13;      // 剣のどこを握るか。0=柄頭、1=切先。
-const SHIELD_PUSH = 0.20;     // 盾を手から外へ逃がす量。拳が面から出ないように。
+const SWORD_LEN  = 1.45;      // 断面を測ると 10-30% が柄、30-50% が鍔、以降が刀身。
+const SHIELD_LEN = 1.05;
+const SWORD_GRIP = 0.20;      // 柄の中ほどを握る
+const SHIELD_PUSH = 0.24;     // 盾を手から外へ逃がす量。拳が面から出ないように。
 const LEAN_FIX = 0.060;       // モデル自体が3.4度うしろに傾いているのを起こす
 
 const swordPivot  = new THREE.Group();            // 手のボーンが見つかればそちらへ移す
@@ -492,8 +492,8 @@ const FACE_TRIM = 0;   // 正面の微調整（ラジアン）。ずれが残れ
 let guardHeld = false;    // 盾ボタンを押しているか
 let poseDelay = 0;        // 押してから構えに入るまでの残り
 let freezeT = 0;          // 離してからも留まる残り
-const GUARD_IN = 2.0;     // 固定してから構えるまでの間
-const GUARD_OUT = 2.0;    // 構えを解いてから追従に戻るまでの間
+const GUARD_IN = 1.2;     // 固定してから構えるまでの間
+const GUARD_OUT = 1.2;    // 構えを解いてから追従に戻るまでの間
 
 const doSword = () => { st.swing = 1; st.shakeT = 0.18; playAction('attack'); };
 const doRoar  = () => { st.roar  = 1; st.shakeT = 0.26; playAction('roar'); };
@@ -574,6 +574,8 @@ gate.addEventListener('click', boot);
 const clock = new THREE.Clock();
 const _camLocal = new THREE.Vector3(), _handW = new THREE.Vector3();
 const _v3 = new THREE.Vector3(), _cardUp = new THREE.Vector3();
+const _qh = new THREE.Quaternion(), _qc = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion(), _e2 = new THREE.Euler();
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
@@ -755,7 +757,7 @@ function update(){
     ]);
     // 開くのは肩から。腕の骨だけを大きくひねると関節が外れて見える。
     boneSet('RightShoulder', [[0,0,1, -r*0.34], [0,1,0, r*0.12]]);
-    boneSet('LeftShoulder',  [[0,0,1,  r*0.34], [0,1,0, -r*0.12 - g*0.20]]);
+    boneSet('LeftShoulder',  [[0,0,1,  r*0.34], [0,1,0, -r*0.12], [1,0,0, -g*0.25]]);
     boneSet('RightForeArm', [
       [1,0,0, -1.25*w + 1.55*c - r*0.30],     // 前腕は遅れて伸びる
       [0,0,1, -0.30*w + 0.45*c + r*0.18]
@@ -765,7 +767,7 @@ function update(){
     // 左腕。守備では肩ごと前へ入れ、盾を顔の高さまで持ち上げる。
     boneSet('LeftArm', [
       [1,0,0, g*1.50 + r*0.30],
-      [0,1,0, -g*0.95 - r*0.18],
+      [0,1,0, -g*0.55 - r*0.18],
       [0,0,1, g*0.55 + r*0.72]
     ]);
     boneSet('LeftForeArm', [
@@ -787,6 +789,25 @@ function update(){
     boneSet('Spine02', [[0,1,0, 0.30*w - 0.42*c], [1,0,0, -r*0.34 + c*0.20 + g*0.10]]);
 
     // 頭。ためで振りかぶる方を見て、打ち抜きで斬る先を追う。守備では首をすくめる。
+    // 武器の向きは、手の骨のローカル軸に預けない。あの軸がどう取られているかは
+    // モデル側の都合で、預けると刀身が拳を横切って「刺さって」見える。
+    // 体の空間で向きを決め、手の骨の回転を打ち消して実現する。位置は手に付いて回る。
+    chara.getWorldQuaternion(_qc);
+    if (bones.RightHand){
+      // 立てて構え、振りかぶって、斜めに打ち下ろす
+      _e2.set(-0.30 - 1.10*w + 2.70*c, 0.20*w - 0.30*c, 0.30 + 0.25*w - 0.60*c, 'XYZ');
+      _q2.setFromEuler(_e2);
+      bones.RightHand.getWorldQuaternion(_qh).invert();
+      swordPivot.quaternion.copy(_qh).multiply(_qc).multiply(_q2);
+    }
+    if (bones.LeftHand){
+      // 盾は常に面を正面へ。守備では体の前で正対させる。
+      _e2.set(0.10 - g*0.10, 0, -0.35 + g*0.35, 'XYZ');
+      _q2.setFromEuler(_e2);
+      bones.LeftHand.getWorldQuaternion(_qh).invert();
+      shieldPivot.quaternion.copy(_qh).multiply(_qc).multiply(_q2);
+    }
+
     // 首と頭。正で上を向く。守備では首をすくめ、咆哮では天を仰ぎ、
     // 斬るときは打点を見下ろす。
     boneSet('neck', [[1,0,0, -g*0.18 + r*0.20]]);
@@ -815,7 +836,7 @@ function update(){
   const ww = st.swing > 0.001 ? (uu < 0.35 ? Math.sin(uu/0.35*Math.PI/2) : Math.max(0, 1-(uu-0.35)/0.15)) : 0;
   chara.rotation.x = ww*0.10 - cc*0.26 - roarU*0.14;
   // 構えると盾側の肩を前に出して半身になる。腕が上がらないぶんをこれで補う。
-  chara.rotation.z = st.guard*0.10;
+  chara.rotation.z = 0;   // 守備でも半身にせず、正面で盾を構える
   chara.position.set(
     st.guard*-0.10,
     Math.min(0, (1-e)*-0.12 - st.guard*0.24 - cc*0.05) + (Math.random()-0.5)*st.shakeT*0.02,   // 足を床より上げない
