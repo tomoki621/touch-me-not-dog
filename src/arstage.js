@@ -37,7 +37,10 @@ export function createStage(opt){
   // antialias はモバイルでは高くつく。輪郭は影と背景が隠すので外す。
   const renderer = new THREE.WebGLRenderer({
     canvas: opt.gl, alpha: true, antialias: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+  // 画素の刻み。1.5 で頭打ちにしていたが、いまの端末はたいてい 3 なので、
+  // 実写のカメラ映像の隣に半分の解像度で描くことになり、3D だけがぼやけて見えた。
+  // 場面は2万三角形と光ひとつで、塗る画素を倍にしても足りる。
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   // three は 0.149。outputColorSpace / texture.colorSpace が入るのは 0.152 から。
   // この版に書いても新しい属性が生えるだけで誰も読まない。線形のまま画面へ行き、
   // 中間調が軒並み沈む。この版では encoding 側で指定するのが正しい。
@@ -231,9 +234,10 @@ export function createStage(opt){
       // 対応していない端末はそこで落ちる（落ちるのは自分で書いた行ではない）。
       // 床の高さは要らない。置く場所はヒットテストが教えてくれる。
       renderer.xr.setReferenceSpaceType('local');
-      // 3D の層を少し小さく焼く。実写側の粗さに対して等倍で描く意味は薄く、
-      // 塗る画素が減るぶんそのまま軽くなる。
-      renderer.xr.setFramebufferScaleFactor(0.8);
+      // 3D の層は等倍で焼く。0.8 に落として軽くしていたが、パススルーの実写は
+      // 等倍のままなので、キャラだけが甘くなって浮いて見えた。軽さより、
+      // 実写と同じ細かさで乗っていることを取る。
+      renderer.xr.setFramebufferScaleFactor(1.0);
       // AR は実寸。背丈 1.9 のまま置くと 1.9m の巨人になる。机に置く物として
       // 既定はここで決め、あとは指で。
       base = opt.arH / opt.bodyH;

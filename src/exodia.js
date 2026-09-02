@@ -16,7 +16,8 @@ const fireBtn = $('fire');
 // antialias はモバイルでは高くつく。輪郭は煙と後光が隠すので外す。
 const renderer = new THREE.WebGLRenderer({
   canvas: $('gl'), alpha: true, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+// 画素の刻み。src/arstage.js と揃える。1.5 では実写の隣で 3D だけがぼやけた。
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 // three は 0.149。renderer.outputColorSpace と texture.colorSpace が入るのは 0.152 から。
 // この版に書いても、ただの新しい属性が生えるだけで誰も読まない。既定の線形のまま
 // 画面へ出るので、中間調が軒並み沈んで全体が暗く濁る。この版では encoding 側で指定する。
@@ -1199,7 +1200,7 @@ function startXR(){
     renderer.xr.setReferenceSpaceType('local');
     // 3D の層を少し小さく焼く。実写側の粗さに対して等倍で描く意味は薄く、
     // 塗る画素が減るぶんそのまま軽くなる。
-    renderer.xr.setFramebufferScaleFactor(0.8);
+    renderer.xr.setFramebufferScaleFactor(1.0);
     // AR は実寸。背丈 1.6 のまま置くと 1.6m の巨人になる。机の上に置く物として
     // 既定はひざ下ほどにし、あとは指で決めてもらう。
     base = AR_H / BODY_H;
