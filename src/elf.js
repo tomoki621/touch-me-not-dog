@@ -67,6 +67,12 @@ const ar = createStage({
       '）。この表示にはカメラの姿勢が無いので、置いても現実の一点には留まりません。';
     renderDbg();
   },
+  // 置いた点を現実へ結べたか。結べないと、端末が自己位置を直すたびに流れる。
+  // 直しようが無いので、せめて理由を出す。
+  onAnchor: (ok, why) => {
+    dbg.mode = ok ? '' : (why + ' 端末が自分の位置を測り直すたびに、少しずつ流れます。');
+    renderDbg();
+  },
   onPlaced: () => {
     acts.classList.add('on');
     tip.innerHTML = xrOn

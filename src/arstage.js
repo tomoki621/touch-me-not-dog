@@ -11,6 +11,17 @@
 // 指で決めてもらう方へ落とす。落ちたあとでも、面が見つかればそちらへ戻る。
 // ただし一度でも指で動かしたら、もう奪い返さない。
 //
+// 【置いた場所を現実に結ぶ】置くだけでは留まらない。参照空間（local）へ座標を
+// 書いても、それは「セッションが始まったときの端末の位置」から測った座標でしか
+// ない。端末は歩くほど自分の位置を推定し直すので、そのたびに空間ごとずれ、
+// 何もしていないのにキャラが流れていく。
+//
+// 直すには、現実の特徴そのものへ結び付けるしかない。それが WebXR の錨
+// （XRAnchor）で、端末が推定を直すと錨の座標もついて直る。置いたら錨を作り、
+// 毎フレーム錨の位置へ合わせ直す。向きと大きさは指で決めたものなので触らない。
+// 錨が使えない端末では、今までどおり座標を書いたまま留める（流れるが、置けなく
+// なるよりはいい）。
+//
 // エクゾディア（src/exodia.js）は自前の同じ仕組みを抱えたままにしてある。
 // あちらは効果と絡んで組んであり、動いているものを触る利が無い。ここを直したら
 // あちらも見る、とだけ決めておく。
@@ -106,6 +117,9 @@ export function createStage(opt){
   // しばらく当たらなければカメラの前に輪を出し、指で決められるようにする。
   let byHand = false, handMoved = false, lastHit = 0;
   const handPos = new THREE.Vector3();
+  // 錨。anchor が付くまでは座標を書いたまま。anchorTried は一度きりの作成の印。
+  let anchor = null, anchorTried = false, anchorWhy = '';
+  const _m4 = new THREE.Matrix4();
   // 基準の倍率。AR は実寸なので、ここが背丈をメートルへ読み替える係数になる。
   let base = 1;
   // 倍率の幅。AR は実寸なので、机の置物から見上げる大きさまで要る。
@@ -209,7 +223,13 @@ export function createStage(opt){
   // ---------------------------------------------------------------- 置く／戻す
   // 輪のところへ本体を移す。ここを通った時点で、座標は現実の側に固定される。
   // 以後カメラがどれだけ動いても stage.position は変わらない。それが「その場に居る」。
+  function dropAnchor(){
+    if (anchor && anchor.delete) { try { anchor.delete(); } catch (e) { void e; } }
+    anchor = null; anchorTried = false; anchorWhy = '';
+  }
+
   function place(){
+    dropAnchor();
     stage.position.setFromMatrixPosition(reticle.matrix);
     // 置いた瞬間はこちらを向いていてほしい。面の傾きではなく、見ている向きで決める。
     camera.getWorldPosition(_camP);
@@ -223,6 +243,7 @@ export function createStage(opt){
   // 置き直す。AR では面を選ぶところからやり直し、貼り付け表示では真ん中へ戻す。
   function home(){
     placed = false;
+    dropAnchor();
     byHand = false; handMoved = false; lastHit = performance.now();
     stage.scale.setScalar(base);
     stage.rotation.set(0, 0, 0);
@@ -258,7 +279,8 @@ export function createStage(opt){
     tapme.textContent = 'AR を起動しています…';
     navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test', 'local'],
-      optionalFeatures: ['dom-overlay'],
+      // 錨は任意で頼む。必須にすると、無い端末では AR ごと使えなくなる。
+      optionalFeatures: ['dom-overlay', 'anchors'],
       domOverlay: { root: opt.ov },
     }).then((session) => {
       xr = session;
@@ -278,6 +300,7 @@ export function createStage(opt){
       sLo = 0.25; sHi = 4.0;      // 実寸で 6cm ほどから 1m ほどまで
       stage.scale.setScalar(base);
       session.addEventListener('end', () => {
+        dropAnchor();
         xr = null; hitSource = null; placed = false;
         document.body.classList.remove('xr');
         renderer.xr.enabled = false;
@@ -339,9 +362,43 @@ export function createStage(opt){
   // 毎フレーム、描く前に呼ぶ。置く場所を探すのはここ。
   // 置いたあとは探さない。探し続けると、輪と一緒に本体まで動かしたくなる。
   function update(frame){
-    if (!frame || !hitSource || placed) return;
+    if (!frame) return;
     const space = renderer.xr.getReferenceSpace();
-    const hits = space ? frame.getHitTestResults(hitSource) : [];
+    if (!space) return;
+
+    // 置いたあと。錨があれば、そこへ毎フレーム合わせ直す。これをしないと、端末が
+    // 自己位置を推定し直すたびに空間ごとずれて、何もしていないのに流れていく。
+    if (placed){
+      if (!anchorTried){
+        anchorTried = true;
+        try {
+          if (typeof XRRigidTransform === 'undefined' || !frame.createAnchor){
+            anchorWhy = 'この端末は錨（anchors）に対応していません';
+          } else {
+            const t = new XRRigidTransform(
+              { x: stage.position.x, y: stage.position.y, z: stage.position.z, w: 1 },
+              { x: 0, y: 0, z: 0, w: 1 });
+            // 錨は作るのに時間がかかる。返ってくるまでは座標のままで待つ。
+            frame.createAnchor(t, space)
+              .then((a) => { anchor = a; anchorWhy = ''; if (opt.onAnchor) opt.onAnchor(true, ''); })
+              .catch((e) => {
+                anchorWhy = '錨を作れませんでした（' + ((e && e.message) || e) + '）';
+                if (opt.onAnchor) opt.onAnchor(false, anchorWhy);
+              });
+          }
+        } catch (e){ anchorWhy = '錨を作れませんでした（' + ((e && e.message) || e) + '）'; }
+        if (anchorWhy && opt.onAnchor) opt.onAnchor(false, anchorWhy);
+      }
+      if (anchor){
+        // 追えないフレームもある。そのときは前の位置のまま置いておく。
+        const ap = frame.getPose(anchor.anchorSpace, space);
+        if (ap) stage.position.setFromMatrixPosition(_m4.fromArray(ap.transform.matrix));
+      }
+      return;
+    }
+
+    if (!hitSource) return;
+    const hits = frame.getHitTestResults(hitSource);
     const pose = hits.length ? hits[0].getPose(space) : null;
     const now = performance.now();
 
@@ -377,6 +434,8 @@ export function createStage(opt){
     update, place, home, tryPlace, boot,
     isXR: () => !!xr,
     flatWhy: () => flatWhy,
+    anchored: () => !!anchor,
+    anchorWhy: () => anchorWhy,
     isPlaced: () => placed,
     video: () => (xr ? null : opt.cam),
   };
