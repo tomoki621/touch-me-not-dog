@@ -5,6 +5,12 @@
 //   置いたあとカメラが動いても、キャラはその場に居る。歩いて回り込める。
 //   使えない端末（iPhone の Safari など）では、カメラ映像に貼り付ける方へ落とす。
 //
+// 【面が見つからないとき】ヒットテストは何も返さないことがある。無地の床、暗い
+// 部屋、机が低い。前は輪が出るまで「置く」を断っていたので、そういう場所では
+// 置けないまま詰んだ。いまは数秒待って見つからなければ、カメラの前に輪を出して
+// 指で決めてもらう方へ落とす。落ちたあとでも、面が見つかればそちらへ戻る。
+// ただし一度でも指で動かしたら、もう奪い返さない。
+//
 // エクゾディア（src/exodia.js）は自前の同じ仕組みを抱えたままにしてある。
 // あちらは効果と絡んで組んであり、動いているものを触る利が無い。ここを直したら
 // あちらも見る、とだけ決めておく。
@@ -16,11 +22,16 @@ import * as THREE from 'three';
 
 // 貼り付け表示のときの、カメラからキャラまでの距離。
 const DIST = 4.2;
+// 面が見つからないとき、手で置く輪をカメラの何メートル前に出すか。
+const HAND_DIST = 1.2;
+// これだけ当たらなければ、手で置く方へ切り替える（ミリ秒）。
+const HAND_WAIT = 2500;
 const PINCH_MIN = 10;     // これ未満は指がくっついているとみなす（px）
 const R_MAX = 1.14;       // 1フレームで許す倍率の変化。跳ねを根元で止める。
 const POS_MAX = 2.2;      // 貼り付け表示のとき、画面の外へ飛ばさない
 
 const _camP = new THREE.Vector3();
+const _right = new THREE.Vector3(), _up = new THREE.Vector3();
 
 // opt:
 //   gl, cam, touch      canvas / video / 指の受け皿の要素
@@ -86,6 +97,11 @@ export function createStage(opt){
 
   // ---------------------------------------------------------------- 状態
   let xr = null, hitSource = null, placed = false, hitOK = false;
+  // 手で置く方。面が見つからない部屋（無地の床、暗い、机が低い）では、ヒットテストが
+  // いつまでも何も返さない。そのままだと「置く」が永久に効かず、置けないまま詰む。
+  // しばらく当たらなければカメラの前に輪を出し、指で決められるようにする。
+  let byHand = false, handMoved = false, lastHit = 0;
+  const handPos = new THREE.Vector3();
   // 基準の倍率。AR は実寸なので、ここが背丈をメートルへ読み替える係数になる。
   let base = 1;
   // 倍率の幅。AR は実寸なので、机の置物から見上げる大きさまで要る。
@@ -121,11 +137,24 @@ export function createStage(opt){
       // 置いたら、そこから動かさない。AR では置き場所を現実の面が持っているし、
       // 貼り付け表示でも「決めた場所に居る」ことにする。指で動かせるのは
       // 決める前だけ。動かしたくなったら「置き直す」で決め直す。
-      if (xr || placed) return;
-      const k = perPx();
-      stage.position.x = clampP(stage.position.x + (e.clientX - dragX) * k);
-      stage.position.y = clampP(stage.position.y - (e.clientY - dragY) * k);
+      if (placed) return;
+      const dx = e.clientX - dragX, dy = e.clientY - dragY;
       dragX = e.clientX; dragY = e.clientY;
+      if (xr){
+        // 面が当たっているあいだは指で動かさない。現実の面のほうが正しい。
+        if (!byHand) return;
+        // 手で置くときだけ。カメラの右と上へ、画面で動かしたぶんだけ送る。
+        // 一度でも動かしたら、あとから面が見つかっても輪を奪い返させない。
+        handMoved = true;
+        const k = 2 * HAND_DIST * Math.tan(camera.fov * Math.PI / 360) / innerHeight;
+        _right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+        _up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+        handPos.addScaledVector(_right, dx * k).addScaledVector(_up, -dy * k);
+        return;
+      }
+      const k = perPx();
+      stage.position.x = clampP(stage.position.x + dx * k);
+      stage.position.y = clampP(stage.position.y - dy * k);
     } else if (pts.size === 2 && twoOn){
       const d = dist2(), a = ang2(), cy = cen2();
       // 大きさ。1フレームぶんの比だけを掛ける。比に上限を置いてあるので、
@@ -190,6 +219,7 @@ export function createStage(opt){
   // 置き直す。AR では面を選ぶところからやり直し、貼り付け表示では真ん中へ戻す。
   function home(){
     placed = false;
+    byHand = false; handMoved = false; lastHit = performance.now();
     stage.scale.setScalar(base);
     stage.rotation.set(0, 0, 0);
     if (!xr) stage.position.set(0, 0, -DIST);
@@ -201,7 +231,7 @@ export function createStage(opt){
   function tryPlace(){
     if (placed) return true;
     if (!xr){ placed = true; if (opt.onPlaced) opt.onPlaced(); return true; }
-    if (!hitOK){ if (tip) tip.textContent = '床や机に輪が乗るまで、少し動かしてください'; return false; }
+    if (!hitOK){ if (tip) tip.textContent = '床や机を探しています。少し動かしてください'; return false; }
     place();
     return true;
   }
@@ -250,7 +280,7 @@ export function createStage(opt){
       });
       return renderer.xr.setSession(session).then(() => session.requestReferenceSpace('viewer'));
     }).then((viewer) => xr.requestHitTestSource({ space: viewer }))
-      .then((src) => { hitSource = src; begin(); })
+      .then((src) => { hitSource = src; lastHit = performance.now(); begin(); })
       .catch(xrFailed);
   }
 
@@ -302,14 +332,33 @@ export function createStage(opt){
     const space = renderer.xr.getReferenceSpace();
     const hits = space ? frame.getHitTestResults(hitSource) : [];
     const pose = hits.length ? hits[0].getPose(space) : null;
-    if (pose){
+    const now = performance.now();
+
+    // 面が当たっているうちは、そちらが正しい。手で動かしたあとだけは奪わせない。
+    if (pose && !handMoved){
       reticle.matrix.fromArray(pose.transform.matrix);
       reticle.visible = true;
       hitOK = true;
-    } else {
+      byHand = false;
+      lastHit = now;
+      return;
+    }
+    // まだ探している途中。輪は出さない。
+    if (!byHand && now - lastHit < HAND_WAIT){
       reticle.visible = false;
       hitOK = false;
+      return;
     }
+    // 見つからないので手で置く方へ。カメラの少し前・少し下に輪を出す。
+    if (!byHand){
+      byHand = true;
+      handPos.set(0, -0.5, -HAND_DIST).applyMatrix4(camera.matrixWorld);
+      if (tip) tip.innerHTML = '床や机が見つからないので、置き場所は指で決めます'
+                             + '<br>1本指で動かして「置く」';
+    }
+    reticle.matrix.makeTranslation(handPos.x, handPos.y, handPos.z);
+    reticle.visible = true;
+    hitOK = true;
   }
 
   return {
