@@ -391,15 +391,30 @@ export function createStage(opt){
       }
       if (anchor){
         // 追えないフレームもある。そのときは前の位置のまま置いておく。
-        const ap = frame.getPose(anchor.anchorSpace, space);
+        // getPose は「返さない」だけでなく「投げる」ことがある。錨が追跡から
+        // 外れたり消えたりしたときで、毎フレーム投げ続ける。ここを素通しに
+        // すると、呼び出し元の演技も効果もまとめて止まる。錨を捨てて、座標で
+        // 留める方へ落とす。流れるかもしれないが、止まるよりはいい。
+        let ap = null;
+        try { ap = frame.getPose(anchor.anchorSpace, space); }
+        catch (e){
+          anchorWhy = '錨を見失いました（' + ((e && e.message) || e) + '）';
+          anchor = null;
+          if (opt.onAnchor) opt.onAnchor(false, anchorWhy);
+        }
         if (ap) stage.position.setFromMatrixPosition(_m4.fromArray(ap.transform.matrix));
       }
       return;
     }
 
     if (!hitSource) return;
-    const hits = frame.getHitTestResults(hitSource);
-    const pose = hits.length ? hits[0].getPose(space) : null;
+    // ヒットテストも投げることがある（source が閉じた、参照空間が変わった）。
+    // 面が読めないだけなので、その回は「当たらなかった」として進める。
+    let pose = null;
+    try {
+      const hits = frame.getHitTestResults(hitSource);
+      pose = hits.length ? hits[0].getPose(space) : null;
+    } catch (e){ pose = null; void e; }
     const now = performance.now();
 
     // 面が当たっているうちは、そちらが正しい。手で動かしたあとだけは奪わせない。

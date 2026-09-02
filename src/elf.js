@@ -306,7 +306,10 @@ function tick(time, frame){
 function update(frame){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
-  ar.update(frame);
+  // AR の面倒は AR の中で閉じる。ここで投げさせると、以降の演技と効果が
+  // まとめて飛んで、キャラが固まる。置き場所が一回分ずれるだけで済ませる。
+  try { ar.update(frame); }
+  catch(e){ dbg.err = 'AR: ' + (e.message || e); }
 
   if (guardHeld) poseDelay = Math.max(0, poseDelay - dt);
   st.guardTarget = (guardHeld && poseDelay <= 0) ? 1 : 0;
