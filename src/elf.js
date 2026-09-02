@@ -23,14 +23,20 @@ let xrOn = false;          // AR の中に居るか。案内の文がここで�
 // err（例外）と mode（貼り付け表示の断り）は分けて持つ。片方が出ているせいで
 // もう片方が隠れると、直すべきものを見落とす。
 const dbgEl = $('dbg');
-const dbg = { frames:0, models:{}, err:'', mode:'' };
+const dbg = { frames:0, models:{}, err:'', mode:'', live:'' };
+// ?dbg を付けて開くと、置き場所の実測を出し続ける。「置いたのについてくる」と
+// いうとき、動いているのがキャラなのかカメラなのかは、両方の座標を並べないと
+// 決められない。歩きながら見て、
+//   ・「像」が変わらなければ、キャラは現実に留まっている（正常）
+//   ・「差」が変わらなければ、キャラはカメラに付いてきている（不具合）
+const LIVE = /(^|[?&])dbg(=|&|$)/.test(location.search);
 const BR = '\n';   // #dbg は white-space:pre-wrap。行を分けて並べる。
 dbgEl.addEventListener('click', () => { dbgEl.style.display = 'none'; });
 function renderDbg(){
   const broken = Object.keys(dbg.models).filter(k => !/^(OK|取得中)$/.test(dbg.models[k]));
   const msg = [dbg.err,
                broken.length ? broken.map(k => k + ': ' + dbg.models[k]).join(' / ') : '',
-               dbg.mode].filter(Boolean).join(BR);
+               dbg.mode, dbg.live].filter(Boolean).join(BR);
   dbgEl.style.display = msg ? 'block' : 'none';
   if (msg) dbgEl.textContent = msg;
 }
@@ -269,6 +275,21 @@ addEventListener('keyup', e => { if (e.key === '1') guardOff(); });
 // ---------------------------------------------------------------- ループ
 const clock = new THREE.Clock();
 const _camW = new THREE.Vector3();
+const _spW = new THREE.Vector3(), _cpW = new THREE.Vector3();
+
+// いま何がどこに居るか。歩いて見比べるための数。
+function liveLine(){
+  stage.getWorldPosition(_spW);
+  _cpW.setFromMatrixPosition(camera.matrixWorld);
+  const f = (v) => v.toFixed(2);
+  const xyz = (v) => f(v.x) + ' ' + f(v.y) + ' ' + f(v.z);
+  return 'AR=' + (ar.isXR() ? '入' : '貼付') +
+         ' 置=' + (ar.isPlaced() ? '済' : '未') +
+         ' 錨=' + (ar.anchored() ? '有' : '無') + BR +
+         '像   ' + xyz(_spW) + BR +
+         'カメラ ' + xyz(_cpW) + BR +
+         '差   ' + f(_spW.distanceTo(_cpW)) + '  ← 歩いて、変わらない方が原因';
+}
 
 function tick(time, frame){
   dbg.frames++;
@@ -277,7 +298,10 @@ function tick(time, frame){
     if (!dbg.err) dbg.err = (e.message || e) + ' | ' + ((e.stack || '').split(/\n/)[1] || '').trim();
   }
   renderer.render(scene, camera);
-  if (dbg.frames % 20 === 0) renderDbg();
+  if (dbg.frames % 20 === 0){
+    if (LIVE) dbg.live = liveLine();
+    renderDbg();
+  }
 }
 function update(frame){
   const dt = Math.min(clock.getDelta(), 0.05);

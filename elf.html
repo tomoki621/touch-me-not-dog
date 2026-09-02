@@ -25,6 +25,9 @@
      canvas を含めてしまうと XR の描画の上に二重に乗るので、外に置く。 -->
 <div id="ov">
   <div id="touch"></div>
+  <!-- 状態と不具合の表示。#ov の中に置くこと。dom-overlay は #ov の中だけを
+       AR の映像に重ねるので、外に置くと AR のあいだ何を出しても見えない。 -->
+  <pre id="dbg" style="display:none"></pre>
   <div id="cross"><i></i><i></i></div>
 
   <!-- 動作。置いてから出す。置く前に押せると、宙で構えることになる。 -->
@@ -55,7 +58,6 @@
   </div>
 </div>
 
-<pre id="dbg" style="display:none"></pre>
 
 <div id="gate">
   <h1>エルフの剣士</h1>
