@@ -8,6 +8,7 @@
     "@gltf-transform/functions": "^4.0.0",
     "@napi-rs/canvas": "^0.1.0",
     "jimp": "0.22.12",
+    "meshoptimizer": "^1.2.0",
     "mind-ar": "1.2.5"
   },
   "devDependencies": {
@@ -15,6 +16,6 @@
     "three": "0.149.0"
   },
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node tools/build.mjs"
   }
 }

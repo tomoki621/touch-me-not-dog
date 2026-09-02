@@ -1,16 +1,21 @@
 node_modules/
+package-lock.json
 .DS_Store
 Thumbs.db
-3Dモデル/
-tmpglb/
-node_modules/
-tex.mjs
-ルイーズ.jpg
-mkmind.mjs
-slim.mjs
-package-lock.json
-render.mjs
-despike.mjs
-tips.mjs
-/*.png
+
+# 原寸のモデル・カードのスキャン・下絵。重いので入れない。
+# 素材/下絵/キャラ/ だけは追跡している（構想の絵で、小さい）。
+素材/3Dモデル/
+素材/エグゾディア/
+素材/クリボー/
+素材/カード/
+素材/下絵/*.png
+
+# 作業の途中で出るもの
+tools/tmp/
 models/*.backup.glb
+/*.png
+
+# 手元の道具立て。人によって違うので共有しない。
+.certs/
+serve.py

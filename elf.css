@@ -1,9 +1,9 @@
-/* ルイーズ。作りは elf.html と同じで、色だけ違う。
+/* エルフの剣士。作りは index.html と同じで、色だけ緑に寄せてある。
    ページごとに CSS を分けてあるのは、版番号を別に付けて配るため。 */
 :root{
-    --bg:#191424; --fg:#efe9f8; --dim:#9a8fb0;
-    --accent:#5b86ef; --bad:#e8705a;
-    --glass:#191424cc; --line:#efe9f833; --shadow:#00000099;
+    --bg:#111d16; --fg:#e6f0e4; --dim:#8fa892;
+    --accent:#4fd08a; --bad:#e8836a;
+    --glass:#111d16cc; --line:#e6f0e433; --shadow:#00000099;
     --display:"Dela Gothic One","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
   }
 
@@ -66,10 +66,10 @@
     border:1px solid var(--line);background:var(--glass);
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     color:var(--fg);font-size:14px;letter-spacing:.12em;cursor:pointer}
-  #bPlace{border-color:#5b86ef66;color:var(--accent);box-shadow:0 0 20px #5b86ef26}
+  #bPlace{border-color:#4fd08a66;color:var(--accent);box-shadow:0 0 20px #4fd08a26}
   .sb:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
-  #tip{font-size:11.5px;letter-spacing:.06em;color:#efe9f875;text-align:center;
+  #tip{font-size:11.5px;letter-spacing:.06em;color:#e6f0e475;text-align:center;
     line-height:1.7;text-shadow:0 1px 6px #000a}
 
   /* カメラ許可はユーザー操作起点でないとブラウザが弾く。この1タップだけは消せない。 */

@@ -57,11 +57,17 @@
 <main>
   <div>
     <h1>カードを学習させる</h1>
-    <p>ルイーズのカード画像から、AR がカードを見分けるためのデータ
-       <code>targets.mind</code> を作ります。ここで完結するので、画像をどこにも送りません。</p>
+    <p>カード画像から、AR がそのカードを見分けるためのデータを作ります。
+       ここで完結するので、画像をどこにも送りません。<br>
+       <strong>ブラウザでしか作れません。</strong>特徴点の抽出に WebGL を使うので、
+       Node では動きません（<code>tools/mkmind.mjs</code> は今の版では通りません）。</p>
   </div>
 
   <div class="panel">
+    <div class="row">
+      <button class="ghost" id="pRouise">ルイーズ → targets.mind</button>
+      <button class="ghost" id="pElf">エルフの剣士 → elf.mind</button>
+    </div>
     <div class="row">
       <img id="preview" alt="学習させるカード">
       <div class="meta" id="meta">画像を読み込んでいます…</div>
@@ -78,9 +84,11 @@
   <div class="panel">
     <p style="color:var(--fg);font-size:13.5px">このあと</p>
     <ol>
-      <li>ダウンロードされた <code>targets.mind</code> をこのフォルダに置く</li>
-      <li>私に「置いた」と伝える。コミットして公開します</li>
-      <li>スマホでアプリを開き、カードにかざす</li>
+      <li>ダウンロードされたファイルを、このフォルダ（リポジトリ直下）に置く</li>
+      <li>ページごとに読むファイルが違う。
+          <code>index.html</code> は <code>targets.mind</code>、
+          <code>elf.html</code> は <code>elf.mind</code></li>
+      <li>スマホでそのページを開き、カードにかざす</li>
     </ol>
   </div>
 </main>
@@ -112,13 +120,19 @@ const SOURCES = [
   say('MindAR を読み込めませんでした。ネットワークを確認して再読み込みしてください。', true);
 })();
 
-function useImage(src, label){
+// 出す名前はカードごとに違う。ページごとに .mind を分けてあるので、
+// ここを取り違えると、片方を作り直したつもりでもう片方を潰すことになる。
+let outName = 'targets.mind';
+
+function useImage(src, label, out){
   const im = new Image();
   im.crossOrigin = 'anonymous';
   im.onload = () => {
     img = im;
+    outName = out;
     preview.src = src;
-    meta.innerHTML = label + '<br>' + im.naturalWidth + ' × ' + im.naturalHeight + ' px';
+    meta.innerHTML = label + '<br>' + im.naturalWidth + ' × ' + im.naturalHeight + ' px' +
+                     '<br>出すファイル: <code>' + out + '</code>';
     go.disabled = false;
     say('準備できました');
   };
@@ -128,12 +142,24 @@ function useImage(src, label){
   };
   im.src = src;
 }
-useImage('%E3%83%AB%E3%82%A4%E3%83%BC%E3%82%BA.jpg', 'ルイーズ.jpg');
+
+// 原寸のカードは 素材/カード/ に置いてある（リポジトリには入れていない）。
+const CARDS = {
+  rouise: { src: '素材/カード/ルイーズ.jpg',        label: 'ルイーズ',      out: 'targets.mind' },
+  elf:    { src: '素材/カード/エルフの剣士.png',    label: 'エルフの剣士',  out: 'elf.mind' },
+};
+const useCard = (k) => useImage(encodeURI(CARDS[k].src), CARDS[k].label, CARDS[k].out);
+
+$('pRouise').addEventListener('click', () => useCard('rouise'));
+$('pElf').addEventListener('click', () => useCard('elf'));
+useCard('rouise');
 
 $('pick').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0];
-  if (f) useImage(URL.createObjectURL(f), f.name);
+  // 手で選んだときは、いま選ばれている出し先をそのまま使う。取り違えを防ぐため
+  // 名前は必ず画面に出す。
+  if (f) useImage(URL.createObjectURL(f), f.name, outName);
 });
 
 go.addEventListener('click', async () => {
@@ -152,11 +178,11 @@ go.addEventListener('click', async () => {
     const blob = new Blob([buffer], {type:'application/octet-stream'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'targets.mind';
+    a.download = outName;
     document.body.appendChild(a); a.click(); a.remove();
     fill.style.width = '100%';
     say('完了（' + ((performance.now()-t0)/1000).toFixed(1) + '秒、' +
-        Math.round(blob.size/1024) + ' KB）。 targets.mind をこのフォルダに置いてください。');
+        Math.round(blob.size/1024) + ' KB）。 ' + outName + ' をこのフォルダに置いてください。');
   } catch(err){
     go.disabled = false;
     say('学習に失敗しました: ' + ((err && err.message) || err), true);

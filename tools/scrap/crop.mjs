@@ -1,0 +1,12 @@
+import { createCanvas, loadImage } from '@napi-rs/canvas';
+import fs from 'node:fs';
+const [,, src, out, sx, sy, sw, sh, k] = process.argv;
+const img = await loadImage(fs.readFileSync(src));
+const s = Number(k)||6;
+const c = createCanvas(Number(sw)*s, Number(sh)*s);
+const g = c.getContext('2d');
+g.imageSmoothingEnabled = true;
+g.imageSmoothingQuality = 'high';
+g.drawImage(img, Number(sx), Number(sy), Number(sw), Number(sh), 0, 0, c.width, c.height);
+fs.writeFileSync(out, c.toBuffer('image/png'));
+console.log(`元 ${img.width}x${img.height} → 切り出し ${c.width}x${c.height}`);

@@ -1,0 +1,103 @@
+  :root{
+    --gold:#ffcc4d; --gold-dim:#8a6a1e;
+    --display:"Dela Gothic One","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;background:#000;
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;color:#efe9f8;
+    -webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none}
+
+  /* 実写。位置合わせは手でやるので画角は合わせない。 */
+  #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+  /* WebXR では実写をブラウザが描くので、自前の映像は隠す。 */
+  body.xr #cam{display:none}
+  /* 置く場所は現実の面で示すので、画面の十字は要らない。 */
+  body.xr #cross{display:none}
+  /* dom-overlay の入れ物。素通しにして、必要な子だけが指を受ける。 */
+  #ov{position:fixed;inset:0;z-index:2;pointer-events:none}
+  #ov > *{pointer-events:auto}
+  #flash{pointer-events:none}
+  #cross{pointer-events:none}
+  #gl{position:fixed;inset:0;z-index:1}
+  /* 指の受け皿。3Dより前、HUDより後ろ。 */
+  #touch{position:fixed;inset:0;z-index:3;touch-action:none}
+
+  /* 召喚の瞬間に画面ごと白く飛ばす。3D側でやるより安く、確実に全面を覆える。 */
+  #flash{position:fixed;inset:0;z-index:6;background:#fff;opacity:0;pointer-events:none}
+
+  /* 真ん中の目安。カードの中心に合わせるための十字で、召喚したら消える。 */
+  #cross{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:.5;transition:opacity .6s}
+  #cross.dim{opacity:.16}
+  #cross i{position:absolute;left:50%;top:50%;background:#ffffff88;display:block}
+  #cross i:nth-child(1){width:1px;height:26px;transform:translate(-50%,-50%)}
+  #cross i:nth-child(2){width:26px;height:1px;transform:translate(-50%,-50%)}
+
+  /* 操作。撮っている映像に痕跡を残さないよう、押しても見た目は変えない。 */
+  #hud{position:fixed;left:0;right:0;bottom:0;z-index:5;
+    padding:0 20px calc(26px + env(safe-area-inset-bottom,0px));
+    display:flex;flex-direction:column;align-items:center;gap:14px;
+    opacity:0;pointer-events:none;transition:opacity .5s}
+  #hud.on{opacity:1;pointer-events:auto}
+
+  #call{-webkit-appearance:none;appearance:none;padding:15px 40px;border-radius:999px;
+    border:1px solid #ffcc4d66;background:#1a1206cc;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    color:var(--gold);font-family:var(--display);font-weight:400;font-size:17px;
+    letter-spacing:.18em;cursor:pointer;box-shadow:0 0 22px #ffcc4d2e;
+    transition:opacity .4s}
+  #call:disabled{opacity:.32;cursor:default}
+  #call:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
+
+  /* 技。召喚のボタンより手前に置き、色は火の側へ寄せる。押せるようになるのは
+     立ち上がってから。それまでは出さない（出しておくと、押せないボタンを
+     押させることになる）。 */
+  #fire{-webkit-appearance:none;appearance:none;padding:11px 30px 12px;border-radius:999px;
+    border:1px solid #ff8a3d66;background:#220d05cc;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    color:#ffb066;font-family:var(--display);font-weight:400;font-size:14px;
+    letter-spacing:.14em;cursor:pointer;box-shadow:0 0 22px #ff6a1e33;
+    line-height:1.25;opacity:0;pointer-events:none;transition:opacity .5s}
+  #fire.on{opacity:1;pointer-events:auto}
+  #fire span{display:block;font-size:9.5px;letter-spacing:.34em;
+    color:#ff9a5c;opacity:.8;margin-bottom:2px}
+  /* 押せない間も薄く出すのは、立ち上がったあとだけ。それより前は消しておく
+     （`#fire:disabled` だけで書くと、召喚前から薄く見えてしまう）。 */
+  #fire.on:disabled{opacity:.34;cursor:default}
+  #fire:focus-visible{outline:2px solid #ffb066;outline-offset:4px}
+
+  #tune{display:flex;gap:10px;opacity:0;pointer-events:none;transition:opacity .5s}
+  #tune.on{opacity:1;pointer-events:auto}
+  .tb{-webkit-appearance:none;appearance:none;width:46px;height:46px;padding:0;
+    border-radius:50%;border:1px solid #ffcc4d3d;background:#1a1206cc;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    color:var(--gold);font-size:19px;line-height:1;cursor:pointer;
+    display:grid;place-items:center;touch-action:none}
+  .tb:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+
+  #sub{display:flex;gap:12px;opacity:0;pointer-events:none;transition:opacity .5s}
+  #sub.on{opacity:1;pointer-events:auto}
+  .sb{-webkit-appearance:none;appearance:none;padding:10px 20px;border-radius:999px;
+    border:1px solid #efe9f833;background:#191424cc;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    color:#efe9f8;font-size:13px;letter-spacing:.08em;cursor:pointer}
+  .sb:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+
+  #tip{font-size:11.5px;letter-spacing:.06em;color:#efe9f875;text-align:center;
+    text-shadow:0 1px 6px #000a}
+
+  /* カメラ許可はユーザー操作起点でないとブラウザが弾く。この1タップだけは消せない。 */
+  #gate{position:fixed;inset:0;z-index:9;background:#0d0a04;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:20px;padding:34px 28px;text-align:center;transition:opacity .5s}
+  #gate.gone{opacity:0;pointer-events:none}
+  #gate h1{font-family:var(--display);font-weight:400;font-size:clamp(28px,8.5vw,46px);
+    margin:0;letter-spacing:.02em;line-height:1.3;color:var(--gold);
+    text-shadow:0 0 26px #ffcc4d4d}
+  #gate p{margin:0;max-width:25em;font-size:14px;line-height:1.9;color:#9a8fb0}
+  #tapme{font-size:13px;letter-spacing:.14em;color:var(--gold);
+    animation:breathe 2.4s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
+  #note{font-size:12.5px;line-height:1.8;color:#e8705a;min-height:1.5em;max-width:28em;margin:0}
+  @media (prefers-reduced-motion: reduce){ #tapme{animation:none;opacity:1} }

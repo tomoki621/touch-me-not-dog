@@ -4,16 +4,16 @@
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>触らせてくれない</title>
+<title>封印されしエクゾディア</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap">
 <style>
   /* 最小限。ここが効かないとタップできなくなるので HTML に直接置く。 */
-  html,body{height:100%;margin:0;overflow:hidden;background:#191424;
+  html,body{height:100%;margin:0;overflow:hidden;background:#0d0a04;
     font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;color:#efe9f8}
-  #gate{position:fixed;inset:0;z-index:9;cursor:pointer;background:#191424;
+  #gate{position:fixed;inset:0;z-index:9;cursor:pointer;background:#0d0a04;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:20px;padding:34px 28px;text-align:center}
-  #hud,#acts{opacity:0}
+  #hud,#sub{opacity:0}
 </style>
 </head>
 <body>
@@ -26,19 +26,7 @@
 <div id="ov">
   <div id="touch"></div>
   <div id="cross"><i></i><i></i></div>
-
-  <!-- 動作。置いてから出す。置く前に押せると、宙で構えることになる。 -->
-  <div id="acts">
-    <button class="act" id="aShield" aria-label="盾でふせぐ">
-      <svg viewBox="0 0 24 24"><path d="M12 3.2 5.2 5.9v5.2c0 4.2 2.8 7.4 6.8 8.7 4-1.3 6.8-4.5 6.8-8.7V5.9z"/></svg>
-    </button>
-    <button class="act" id="aRoar" aria-label="威嚇する">
-      <svg viewBox="0 0 24 24"><path d="M4 9.5v5h3l4 3.4V6.1L7 9.5z"/><path d="M14.6 9.2a4 4 0 0 1 0 5.6"/><path d="M17.6 6.4a8 8 0 0 1 0 11.2"/></svg>
-    </button>
-    <button class="act" id="aSword" aria-label="剣をふる">
-      <svg viewBox="0 0 24 24"><path d="M20.5 3.5 11 13"/><path d="m7.6 12.6 3.8 3.8"/><path d="M9.5 14.5 4.6 19.4"/><path d="m3.4 18.6 2 2"/></svg>
-    </button>
-  </div>
+  <div id="flash"></div>
 
   <div id="hud">
     <!-- WebXR の dom-overlay では2本目の指が届かない端末がある。指が使えなくても
@@ -50,18 +38,19 @@
       <button class="tb" id="tCw"    aria-label="右に回す">↻</button>
     </div>
     <div id="sub">
-      <button class="sb" id="bPlace">置　く</button>
+      <button class="sb" id="bReset">封印しなおす</button>
       <button class="sb" id="bHome">置き直す</button>
     </div>
-    <div id="tip">床や机に輪を合わせて「置く」</div>
+    <!-- 技。立たせるまでは押せない。読み上げでは正式な名で読ませる。 -->
+    <button id="fire" disabled aria-label="怒りの業火 魔神火炎砲 エグゾード・フレイム"><span>怒りの業火</span>エグゾード・フレイム</button>
+    <button id="call">召　喚</button>
+    <div id="tip">床やカードに輪を合わせてから召喚<br>2本指、またはボタンで大きさと向き</div>
   </div>
 </div>
 
-<pre id="dbg" style="display:none"></pre>
-
 <div id="gate">
-  <h1>触らせてくれない</h1>
-  <p>床や机に立たせて、盾・威嚇・剣で追い払わせて撮ってください。<br>カードは要りません。</p>
+  <h1>封印されし<br>エクゾディア</h1>
+  <p>5枚のカードを並べ、その真ん中にかざしてください。<br>揃ったとき、封印は解かれます。</p>
   <div id="tapme">画面をタップして開始</div>
   <p id="note"></p>
 </div>
@@ -69,22 +58,21 @@
 <script>
 // HTML は GitHub Pages に10分キャッシュされる。中身を HTML に置くと修正が届かない。
 // CSS も JS も外部ファイルにして、版番号だけ毎回取りに行って付ける。
-// no-store を無視する端末があるので、URL 自体も毎回変える。版番号が古いまま
-// 読まれると、そこから先（JS・モデル）が丸ごと古いものになる。
+// no-store を無視する端末があるので、URL 自体も毎回変える。
 fetch("build.json?t=" + Date.now(), {cache:"no-store"}).then(r => r.json()).then(v => {
   const l = document.createElement("link");
-  l.rel = "stylesheet"; l.href = "app.css?h=" + v.css;
+  l.rel = "stylesheet"; l.href = "exodia.css?h=" + v.exCss;
   document.head.appendChild(l);
   const s = document.createElement("script");
-  s.src = "app.js?h=" + v.js;
+  s.src = "exodia.js?h=" + v.ex;
   document.body.appendChild(s);
 }).catch(() => {
   const t = Date.now();
   const l = document.createElement("link");
-  l.rel = "stylesheet"; l.href = "app.css?t=" + t;
+  l.rel = "stylesheet"; l.href = "exodia.css?t=" + t;
   document.head.appendChild(l);
   const s = document.createElement("script");
-  s.src = "app.js?t=" + t;
+  s.src = "exodia.js?t=" + t;
   document.body.appendChild(s);
 });
 </script>
