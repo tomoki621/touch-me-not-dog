@@ -1,8 +1,12 @@
 // エルフの剣士の姿勢を描き出す道具。
 //
-//   node tools/elfpose.mjs <out.png> [g=守備] [w=ため] [c=薙ぎ]
+//   node tools/elfpose.mjs <out.png> [g=守備] [w=ため] [c=斬り抜き] [m=頭上]
 //   node tools/elfpose.mjs guard.png 1 0 0     ひざをついた守備
-//   node tools/elfpose.mjs swing.png 0 0 1     薙ぎの打点
+//   node tools/elfpose.mjs swing.png u0.56     斬りの、始めから 0.56 のところ
+//
+// 重みを直に渡すと、実際には起こらない組み合わせも描けてしまう。振りの途中を
+// 見るときは u で渡すこと。src/elfpose.js の poseWeights をアプリと同じに呼ぶ
+// ので、画面に出る一瞬をそのまま切り出せる。
 //
 // src/elfpose.js の applyPose をアプリと同じに呼ぶ。表も手順も共通なので、
 // ここで見た姿がそのまま画面に出る。剣も同じ計算で置くので、握りの位置と
@@ -13,10 +17,16 @@
 import fs from 'node:fs';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import * as THREE from 'three';
-import { applyPose, kneelDrop } from '../src/elfpose.js';
+import { applyPose, kneelDrop, poseWeights } from '../src/elfpose.js';
 
 const out = process.argv[2] || 'pose.png';
-const p = { g: +(process.argv[3] ?? 1), w: +(process.argv[4] ?? 0), c: +(process.argv[5] ?? 0) };
+// 'u0.56' の形なら、その時点の重みを poseWeights から取る。数字を並べたときは
+// そのまま使う（守備のように、時間と関係なく決まるもの用）。
+const uArg = /^u([0-9.]+)$/.exec(process.argv[3] || '');
+const p = uArg
+  ? poseWeights({ swing: 1 - parseFloat(uArg[1]), guard: +(process.argv[4] ?? 0) })
+  : { g: +(process.argv[3] ?? 1), w: +(process.argv[4] ?? 0),
+      c: +(process.argv[5] ?? 0), m: +(process.argv[6] ?? 0) };
 // 'table' を渡すと、絵は描かずに「守備の重みごとの、沈める前の最下点」だけを並べる。
 // src/elfpose.js の KNEEL_LOW に貼る表はこれで作る。
 const TABLE = process.argv[2] === 'table';
@@ -178,7 +188,7 @@ if (TABLE){
   const row = [];
   for (let i = 0; i <= N; i++){
     const g = i / N;
-    applyPose({ bones, rest, root, swordPivot }, { g, w: 0, c: 0 });
+    applyPose({ bones, rest, root, swordPivot }, { g, w: 0, m: 0, c: 0 });
     root.updateMatrixWorld(true);
     const low = skinned().reduce((m, v) => Math.min(m, v[1]), 9e9);
     row.push(low);
@@ -221,7 +231,8 @@ for (const v of SV) v[1] += drop;
 // ---------------------------------------------------------------- 数で出す
 const lowest = V.reduce((m, v) => Math.min(m, v[1]), 9e9);
 const at = (n) => { const v = new THREE.Vector3(); bones[n].getWorldPosition(v); return v; };
-console.log('重み  守備 ' + p.g.toFixed(2) + '  ため ' + p.w.toFixed(2) + '  薙ぎ ' + p.c.toFixed(2));
+console.log('重み  守備 ' + p.g.toFixed(2) + '  頭上 ' + (p.m || 0).toFixed(2) +
+            '  ため ' + p.w.toFixed(2) + '  斬り抜き ' + p.c.toFixed(2));
 console.log('沈み込み ' + drop.toFixed(3) + '  体の最下点 y=' + lowest.toFixed(3) + '   0 に近いほど、床にちょうど乗っている');
 for (const n of ['Hips','RightLeg','RightFoot','LeftLeg','LeftFoot','RightHand','LeftHand','Head']){
   const v = at(n);

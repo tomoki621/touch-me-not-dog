@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createStage } from './arstage.js';
-import { poseWeights, applyPose, kneelDrop } from './elfpose.js';
+import { poseWeights, applyPose, kneelDrop, HIT_AT } from './elfpose.js';
 
 const $ = (id) => document.getElementById(id);
 const acts = $('acts'), hud = $('hud'), tip = $('tip');
@@ -213,12 +213,12 @@ stage.add(spawnRing);
 let spawnT = 1;
 
 // ---------------------------------------------------------------- 2つの動作
-const st = { t:0, swing:0, guard:0, guardTarget:0, shakeT:0 };
+const st = { t:0, swing:0, guard:0, guardTarget:0, shakeT:0, hit:false };
 let guardHeld = false;    // 守備ボタンを押しているか
 let poseDelay = 0;        // 押してから構えに入るまでの残り
 const GUARD_IN = 0.5;     // ひざをつく動作は大きい。盾を構えるより早く入る。
 
-const doSword = () => { st.swing = 1; st.shakeT = 0.26; };
+const doSword = () => { st.swing = 1; st.hit = false; };
 const guardOn = () => { if (!guardHeld){ guardHeld = true; poseDelay = GUARD_IN; } };
 const guardOff = () => { guardHeld = false; };
 const flash = b => { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 130); };
@@ -265,8 +265,10 @@ function update(frame){
   if (guardHeld) poseDelay = Math.max(0, poseDelay - dt);
   st.guardTarget = (guardHeld && poseDelay <= 0) ? 1 : 0;
 
-  st.swing  = Math.max(0, st.swing  - dt*2.0);
+  st.swing  = Math.max(0, st.swing  - dt*1.5);
   st.shakeT = Math.max(0, st.shakeT - dt);
+  // 手ごたえは、剣が打点を通り過ぎたその一回だけ。
+  if (st.swing > 0.001 && !st.hit && (1 - st.swing) >= HIT_AT){ st.hit = true; st.shakeT = 0.22; }
   st.guard += (st.guardTarget - st.guard) * (1 - Math.exp(-11*dt));
 
   const swingU = 1 - st.swing;
@@ -291,9 +293,11 @@ function update(frame){
 
   // --- 体。腕だけ動くと軽く見えるので、踏み込みとためを全身にも乗せる。
   const breathe = Math.sin(st.t*2.2)*0.012;
+  // 節目は src/elfpose.js の poseWeights と同じ。ため 0.28、打点 0.56。
+  // ここだけ別の刻みにすると、腰と剣が別々に動いて、振っている感じが消える。
   const uu = 1 - st.swing;
-  const cc = st.swing > 0.001 ? (uu < 0.35 ? 0 : uu < 0.55 ? Math.sin((uu-0.35)/0.20*Math.PI/2) : Math.max(0, 1-(uu-0.55)/0.45)) : 0;
-  const ww = st.swing > 0.001 ? (uu < 0.35 ? Math.sin(uu/0.35*Math.PI/2) : Math.max(0, 1-(uu-0.35)/0.15)) : 0;
+  const cc = st.swing > 0.001 ? (uu < 0.40 ? 0 : uu < 0.56 ? Math.sin((uu-0.40)/0.16*Math.PI/2) : Math.max(0, 1-(uu-0.56)/0.44)) : 0;
+  const ww = st.swing > 0.001 ? (uu < 0.28 ? Math.sin(uu/0.28*Math.PI/2) : Math.max(0, 1-(uu-0.28)/0.12)) : 0;
   // ためで軽く反り、斬り下ろしで前へ体重を乗せる。逆にすると後退して見える。
   // 腕の振りだけでは「払った」に見えるので、体重の移りをここで大きく取る。
   chara.rotation.x = ww*0.16 - cc*0.46;
