@@ -14,17 +14,23 @@ import { poseWeights, applyPose, kneelDrop, HIT_AT } from './elfpose.js';
 
 const $ = (id) => document.getElementById(id);
 const acts = $('acts'), hud = $('hud'), tip = $('tip');
+let xrOn = false;          // AR の中に居るか。案内の文がここで変わる。
 
-// ---------------------------------------------------------------- 不具合の表示
-// 普段は何も出さない。壊れたときだけ、その理由を一行で出す。
+// ---------------------------------------------------------------- 状態の表示
+// 普段は何も出さない。壊れたとき、または AR に入れず貼り付け表示へ落ちたときに、
+// その理由を一行で出す。落ちたことを黙っていると「置いても留まらない」の原因が
+// 端末の側にあるのか作りの側にあるのか、誰にも分からなくなる。
+// err（例外）と mode（貼り付け表示の断り）は分けて持つ。片方が出ているせいで
+// もう片方が隠れると、直すべきものを見落とす。
 const dbgEl = $('dbg');
-const dbg = { frames:0, models:{}, err:'' };
+const dbg = { frames:0, models:{}, err:'', mode:'' };
+const BR = '\n';   // #dbg は white-space:pre-wrap。行を分けて並べる。
 dbgEl.addEventListener('click', () => { dbgEl.style.display = 'none'; });
 function renderDbg(){
   const broken = Object.keys(dbg.models).filter(k => !/^(OK|取得中)$/.test(dbg.models[k]));
-  const msg = dbg.err ? dbg.err
-            : broken.length ? broken.map(k => k + ': ' + dbg.models[k]).join(' / ')
-            : '';
+  const msg = [dbg.err,
+               broken.length ? broken.map(k => k + ': ' + dbg.models[k]).join(' / ') : '',
+               dbg.mode].filter(Boolean).join(BR);
   dbgEl.style.display = msg ? 'block' : 'none';
   if (msg) dbgEl.textContent = msg;
 }
@@ -44,18 +50,28 @@ const ar = createStage({
   gl: $('gl'), cam: $('cam'), touch: $('touch'), ov: $('ov'),
   gate: $('gate'), note: $('note'), tapme: $('tapme'), tip,
   bodyH: BODY_H, arH: AR_H,
-  onReady: (isXR) => {
+  onReady: (isXR, why) => {
     hud.classList.add('on');
     // 描き始めるのはカメラ／XR が立ち上がってから。エクゾディアと同じ順。
     // 先に回し始めても three は XR へ繋ぎ直してくれるが、実績のある順に揃える。
     renderer.setAnimationLoop(tick);
+    xrOn = isXR;
     tip.innerHTML = isXR
       ? '床や机に輪を合わせて「置く」<br>2本指、またはボタンで大きさと向き'
       : '1本指で位置、2本指で大きさと向き<br>置いたら「置く」';
+    // 貼り付け表示に落ちたことを黙っていない。この表示にはカメラの姿勢が無く、
+    // 置いても現実の一点に留められない。動くのは不具合ではなく、そもそも
+    // 留める手がかりが無い。理由まで出す。出さないと端末の問題か作りの問題か
+    // 区別がつかない。
+    if (!isXR) dbg.mode = '貼り付け表示です（' + (why || '理由不明') +
+      '）。この表示にはカメラの姿勢が無いので、置いても現実の一点には留まりません。';
+    renderDbg();
   },
   onPlaced: () => {
     acts.classList.add('on');
-    tip.innerHTML = '守備・斬るで追い払う<br>大きさと向きは変えられる。動かすなら「置き直す」';
+    tip.innerHTML = xrOn
+      ? '守備・斬るで追い払う<br>大きさと向きは変えられる。動かすなら「置き直す」'
+      : '守備・斬るで追い払う<br>貼り付け表示なので、画面の中の位置に留まります';
   },
 });
 const { renderer, scene, camera, stage } = ar;

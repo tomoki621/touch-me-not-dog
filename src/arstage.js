@@ -97,6 +97,10 @@ export function createStage(opt){
 
   // ---------------------------------------------------------------- 状態
   let xr = null, hitSource = null, placed = false, hitOK = false;
+  // 貼り付け表示へ落ちた理由。落ちたこと自体を黙っていると、「置いたのに
+  // 留まらない」の原因が見えない。貼り付けにはカメラの姿勢が無いので、
+  // 置いても現実の一点に留められない。それは直しようがなく、伝えるしかない。
+  let flatWhy = '';
   // 手で置く方。面が見つからない部屋（無地の床、暗い、机が低い）では、ヒットテストが
   // いつまでも何も返さない。そのままだと「置く」が永久に効かず、置けないまま詰む。
   // しばらく当たらなければカメラの前に輪を出し、指で決められるようにする。
@@ -240,7 +244,7 @@ export function createStage(opt){
   function begin(){
     gate.classList.add('gone');
     setTimeout(() => { gate.style.display = 'none'; }, 520);
-    if (opt.onReady) opt.onReady(!!xr);
+    if (opt.onReady) opt.onReady(!!xr, flatWhy);
   }
 
   function fail(err, why){
@@ -288,6 +292,7 @@ export function createStage(opt){
   // 閉じ忘れると、何も描かれない真っ黒な全画面に取り残される。
   function xrFailed(err){
     const s = xr;
+    flatWhy = 'AR の用意に失敗: ' + ((err && (err.name + ' ' + err.message)) || err);
     xr = null; hitSource = null;
     document.body.classList.remove('xr');
     renderer.xr.enabled = false;
@@ -321,7 +326,13 @@ export function createStage(opt){
     const ask = navigator.xr && navigator.xr.isSessionSupported
       ? navigator.xr.isSessionSupported('immersive-ar').catch(() => false)
       : Promise.resolve(false);
-    ask.then((ok) => (ok ? startXR() : startFlat()));
+    ask.then((ok) => {
+      if (ok){ startXR(); return; }
+      flatWhy = navigator.xr
+        ? 'この端末の browser に immersive-ar が無い'
+        : 'この browser に WebXR が無い';
+      startFlat();
+    });
   }
   gate.addEventListener('click', boot);
 
@@ -365,6 +376,7 @@ export function createStage(opt){
     renderer, scene, camera, stage, reticle,
     update, place, home, tryPlace, boot,
     isXR: () => !!xr,
+    flatWhy: () => flatWhy,
     isPlaced: () => placed,
     video: () => (xr ? null : opt.cam),
   };
