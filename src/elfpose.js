@@ -41,7 +41,10 @@ export function poseWeights(st){
   const wind = ease(seg(0.16, 0.28)) * (1 - ease(seg(0.28, 0.40)));
   // 斬り抜き：打点まで速く、戻りはゆっくり。
   const chop = ease(seg(0.40, 0.56)) * (1 - ease(seg(0.56, 1.00)));
-  return { g: st.guard, m: on * pass, w: on * wind, c: on * chop };
+  // 両手持ちの効き。振っているあいだだけ左手を柄へ持っていく。守備は左手で
+  // 刀身を支える別の形なので、そちらが立つぶんだけ譲る。
+  return { g: st.guard, m: on * pass, w: on * wind, c: on * chop,
+           two: on * pass * (1 - st.guard) };
 }
 
 // 打点を過ぎたか。手ごたえ（画面の揺れ）はここに合わせる。振り始めに揺らすと、
@@ -128,16 +131,19 @@ export const DIR = {
                   chop: [ 0.44, -0.68,  0.59],
                   guard:[ 0.48,  0.10,  0.87] },
   // 左腕。盾を持たないので、守備では刀身の先の方へ手を添えて受ける。
-  // 斬るときは反対へ振る。腕を体に付けたままだと、上半身だけが回って見える。
+  // 斬るあいだの左腕はこの表では決まらない。柄を握りに行くので、剣の居場所から
+  // 逆に解く（下の twoHand）。ここの ため／頭上／斬り抜き は、その逆解きが
+  // 効きはじめる前と抜けたあとの受け皿。素に寄せてある。逆へ振る指定を残すと、
+  // 掴みに行く手と引っぱり合って、肘が跳ねる。
   LeftArm:      { rest: [ 0.38, -0.90,  0.05],
-                  wind: [ 0.40, -0.83,  0.39],
-                  pass: [ 0.46, -0.87, -0.16],
-                  chop: [ 0.44, -0.80, -0.41],
+                  wind: [ 0.40, -0.86,  0.20],
+                  pass: [ 0.42, -0.85,  0.20],
+                  chop: [ 0.42, -0.85,  0.20],
                   guard:[ 0.30, -0.40,  0.87] },
   LeftForeArm:  { rest: [ 0.26, -0.95,  0.14],
-                  wind: [ 0.30, -0.87,  0.39],
-                  pass: [ 0.34, -0.90, -0.14],
-                  chop: [ 0.34, -0.86, -0.38],
+                  wind: [ 0.30, -0.91,  0.20],
+                  pass: [ 0.32, -0.90,  0.20],
+                  chop: [ 0.32, -0.90,  0.20],
                   guard:[ 0.16,  0.22,  0.96] },
 };
 
@@ -164,6 +170,7 @@ const _pq = new THREE.Quaternion(), _qp = new THREE.Quaternion();
 const _dir = new THREE.Vector3(), _dirW = new THREE.Vector3(), _q3 = new THREE.Quaternion();
 const _pA = new THREE.Vector3(), _pB = new THREE.Vector3(), _v3 = new THREE.Vector3();
 const _q2 = new THREE.Quaternion(), _qRoll = new THREE.Quaternion(), _qh = new THREE.Quaternion();
+const _qTwo = new THREE.Quaternion(), _qKeep2 = new THREE.Quaternion();
 const _upY = new THREE.Vector3(0, 1, 0);
 const _lerp = new THREE.Vector3();
 
@@ -190,19 +197,31 @@ function boneSet(bones, rest, name, chans, p, tw, charaQ){
     b.quaternion.copy(safe);
 }
 
-// 骨の節を、指定した向きへ向ける。角度の符号を積み上げると取り違えるので、
-// 向きそのものをベクトルで書く。
-function aimBone(bones, name, childName, dir, charaQ){
+// 骨の節を、指定した向き（ワールド）へ向ける。
+function aimBoneW(bones, name, childName, dirW){
   const b = bones[name], c = bones[childName];
   if (!b || !c) return;
   b.getWorldPosition(_pA); c.getWorldPosition(_pB);
   _v3.subVectors(_pB, _pA);
   if (_v3.lengthSq() < 1e-9) return;
   _v3.normalize();
-  _dirW.copy(dir).normalize().applyQuaternion(charaQ);   // キャラ空間 → ワールド
-  _q3.setFromUnitVectors(_v3, _dirW);
+  if (!Number.isFinite(dirW.x + dirW.y + dirW.z)) return;
+  _q3.setFromUnitVectors(_v3, dirW);
   b.parent.getWorldQuaternion(_qp);
+  _qKeep2.copy(b.quaternion);
   b.quaternion.premultiply(_qp.clone().invert().multiply(_q3).multiply(_qp));
+  // 非数が一つ混ざるとスキンメッシュ全体が消える。逆解きは毎フレーム割り算と
+  // acos を通るので、ここで止める。boneSet と同じ用心。
+  const q = b.quaternion;
+  if (!(Number.isFinite(q.x) && Number.isFinite(q.y) &&
+        Number.isFinite(q.z) && Number.isFinite(q.w))) b.quaternion.copy(_qKeep2);
+}
+
+// 骨の節を、指定した向きへ向ける。角度の符号を積み上げると取り違えるので、
+// 向きそのものをベクトルで書く。こちらはキャラ空間で受ける。
+function aimBone(bones, name, childName, dir, charaQ){
+  _dirW.copy(dir).normalize().applyQuaternion(charaQ);   // キャラ空間 → ワールド
+  aimBoneW(bones, name, childName, _dirW);
 }
 
 // 表から向きを作る。素 → 頭上 → ため → 斬り抜き → 守備 の順に寄せていく。
@@ -218,6 +237,98 @@ function aim(tbl, p, out){
 
 const ARM_CHAIN = [['RightArm', 'RightForeArm'], ['RightForeArm', 'RightHand'],
                    ['LeftArm',  'LeftForeArm'],  ['LeftForeArm',  'LeftHand']];
+
+// ---------------------------------------------------------------- 両手持ち
+// 斬るあいだは左手も柄を握る。
+//
+// 左手の居場所を向きの表で書くことはできない。剣は頭の上を通る大きな弧を描く
+// ので、節目で合わせても、あいだで必ず柄から外れる。剣の居場所は右手が決めて
+// いるのだから、左腕はそこから逆に解く。肩→肘→手 の二節を、目標へ届く形に
+// 畳むだけ（二辺と対辺から角度を出す。余弦定理）。
+//
+// 肩も少しだけ目標へ向ける。肩を止めたままだと、剣を頭上へ振り上げたとき、
+// 腕の長さが足りずに手が柄から離れる。
+const TWO_GAP      = 0.42;   // 両手の間隔。前腕の長さに対する割合。
+const TWO_SHOULDER = 0.55;   // 肩を目標へ向ける割合
+// 肘の向く先（キャラ空間。成分は 左, 上, 正面）。下・外・少し後ろ。
+const TWO_POLE     = [0.55, -0.75, -0.35];
+
+const _S = new THREE.Vector3(), _T = new THREE.Vector3(), _J = new THREE.Vector3();
+const _hw = new THREE.Vector3(), _d2 = new THREE.Vector3(), _n2 = new THREE.Vector3();
+const _pole = new THREE.Vector3(), _up2 = new THREE.Vector3();
+const _bladeW = new THREE.Vector3(), _qKeep = new THREE.Quaternion();
+
+// bladeW = 刀身のワールド向き。handQ = 手をどう向けるか（右手と同じ）。
+function twoHand(ctx, p, charaQ, handQ){
+  const { bones, root, swordPivot } = ctx;
+  const A = bones.LeftArm, B = bones.LeftForeArm, H = bones.LeftHand;
+  if (!A || !B || !H || !swordPivot) return;
+  const t = Math.min(1, p.two);
+
+  // 節の長さ。骨の長さは変わらないので、いまの姿勢から測ってよい。
+  A.getWorldPosition(_S); B.getWorldPosition(_J); H.getWorldPosition(_hw);
+  const L1 = _S.distanceTo(_J), L2 = _J.distanceTo(_hw);
+  if (L1 < 1e-6 || L2 < 1e-6) return;
+
+  // 目標は柄の、右手より少し下（柄頭寄り）。同じ点だと手が重なる。
+  //
+  // 基準は剣の握り点ではなく「右手の骨」。骨は手首にあり、拳は そこから刃の
+  // 向きへ少し先にある。左右で同じずれを持つので、手首どうしの間隔がそのまま
+  // 拳どうしの間隔になる。握り点から測ると、そのずれを二重に数えてしまい、
+  // 左手が右手に重なる。
+  bones.RightHand.getWorldPosition(_T);
+  _T.addScaledVector(_bladeW, -L2 * TWO_GAP);
+  // 効き具合。0 なら今の手の位置そのもの＝何もしないのと同じ。
+  _T.lerpVectors(_hw, _T, t);
+
+  // 肩を少し送る
+  if (bones.LeftShoulder){
+    _d2.subVectors(_T, _S);
+    if (_d2.lengthSq() > 1e-9){
+      _d2.normalize();
+      _qKeep.copy(bones.LeftShoulder.quaternion);
+      aimBoneW(bones, 'LeftShoulder', 'LeftArm', _d2);
+      bones.LeftShoulder.quaternion.slerp(_qKeep, 1 - TWO_SHOULDER * t);
+      root.updateMatrixWorld(true);
+    }
+  }
+
+  // 二節を畳む
+  A.getWorldPosition(_S);
+  _d2.subVectors(_T, _S);
+  let dist = _d2.length();
+  if (dist < 1e-6) return;
+  _d2.divideScalar(dist);
+  // 届かない／近すぎるときは、届く範囲へ丸める。伸ばしきり／畳みきりになる。
+  dist = Math.min((L1 + L2) * 0.999, Math.max(Math.abs(L1 - L2) + 1e-4, dist));
+  // 肩のところの角度。余弦定理。
+  const cosS = (L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist);
+  const ang = Math.acos(Math.min(1, Math.max(-1, cosS)));
+  // 目標の向きから、肘の向く先へ ang だけ倒す。軸は d×pole。この軸まわりに
+  // 正へ回すと d は pole の側へ寄る（微分が pole の d に垂直な成分になる）。
+  _pole.fromArray(TWO_POLE).applyQuaternion(charaQ);
+  _n2.crossVectors(_d2, _pole);
+  if (_n2.lengthSq() < 1e-8) _n2.set(0, 1, 0); else _n2.normalize();
+  _up2.copy(_d2).applyAxisAngle(_n2, ang);
+  aimBoneW(bones, 'LeftArm', 'LeftForeArm', _up2);
+  root.updateMatrixWorld(true);
+
+  // 前腕は目標そのものへ
+  B.getWorldPosition(_J);
+  _d2.subVectors(_T, _J);
+  if (_d2.lengthSq() > 1e-9){
+    _d2.normalize();
+    aimBoneW(bones, 'LeftForeArm', 'LeftHand', _d2);
+    root.updateMatrixWorld(true);
+  }
+
+  // 左手も刃に沿わせる。右手と同じ向きにすると、両手が同じように柄を包む。
+  _qKeep.copy(H.quaternion);
+  H.parent.getWorldQuaternion(_qh).invert();
+  H.quaternion.copy(_qh).multiply(handQ);
+  H.quaternion.slerp(_qKeep, 1 - t);
+  root.updateMatrixWorld(true);
+}
 
 // ctx = { bones, rest, root, swordPivot }
 //   root       骨を回したあとに行列を作り直す入れ物（アプリでは chara）
@@ -258,6 +369,13 @@ export function applyPose(ctx, p){
     // 剣は手に預けきる。握りの位置は swordPivot.position が持っている。
     swordPivot.quaternion.identity();
     root.updateMatrixWorld(true);
+
+    // 左手を柄へ。剣を置いたあとでないと、掴む先が決まっていない。
+    if (p.two > 0.001){
+      _bladeW.copy(_dir).normalize().applyQuaternion(charaQ);
+      _qTwo.copy(charaQ).multiply(_q2);
+      twoHand(ctx, p, charaQ, _qTwo);
+    }
   }
 }
 

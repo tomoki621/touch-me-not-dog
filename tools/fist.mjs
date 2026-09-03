@@ -1,6 +1,10 @@
 // 右手を握らせる。剣を持たせるのに、指が開いたままだと柄が通り抜けて見える。
 //
-//   node tools/fist.mjs <元> <先> [握り=1.0] [向き=1|-1] [詰め=0.60] [寄せ=0.70]
+//   node tools/fist.mjs <元> <先> [握り=1.0] [向き=1|-1] [詰め=0.60] [寄せ=0.70] [手=RightHand]
+//
+// 両手持ちで振るので、左手も握らせる。手ごとに呼ぶこと。曲げる向き(1|-1)は
+// 手によって変わる。指の広がりから軸を出しているが、その符号までは決まらない
+// ため。tools/tmp/hand.mjs で両方描いて、掌の側へ畳めている方を採る。
 //
 // この模型の骨に指は無い（Hips から Head まで24本、手は RightHand で終わり）。
 // なので姿勢では曲げられない。メッシュそのものを曲げて焼き込む。減らす前の
@@ -24,14 +28,14 @@
 import { NodeIO } from '@gltf-transform/core';
 import * as THREE from 'three';
 
-const [src, dst, gripArg, dirArg, shortArg, tightArg] = process.argv.slice(2);
+const [src, dst, gripArg, dirArg, shortArg, tightArg, handArg] = process.argv.slice(2);
 if (!src || !dst){ console.error('使い方: node tools/fist.mjs <元> <先> [握り] [向き] [詰め] [寄せ]'); process.exit(1); }
 const GRIP  = parseFloat(gripArg  ?? '1.0');
 const DIR   = parseFloat(dirArg   ?? '1');
 const SHORT = parseFloat(shortArg ?? '0.60');   // 指の長さをこの割合まで詰める
 const TIGHT = parseFloat(tightArg ?? '0.70');   // 指の広がりをこの割合まで寄せる
 
-const HAND    = 'RightHand';
+const HAND    = handArg || 'RightHand';
 const W_MIN   = 0.30;   // これ未満の重みは動かさない。手首で千切れるのを防ぐ。
 const KNUCKLE = 0.42;   // 手の長さのどこから指か（手首=0、指先=1）
 const CURL    = 2.30;   // 指先までに回す総量（ラジアン）。握り=1 のときの値。
