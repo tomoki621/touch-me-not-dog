@@ -114,6 +114,8 @@ export function createStage(opt){
   // 区別できないと直しようがない。エクゾディアでは輪が出るのにこちらでは出ない、
   // という報告に対して、どちらなのかを言えるようにしておく。
   let lastHit = 0, tipState = '';
+  // ヒットテストの生の結果。件数と例外を控える（-1 は投げたの意）。
+  let nHits = 0, hitErr = '';
   // 基準の倍率。AR は実寸なので、ここが背丈をメートルへ読み替える係数になる。
   let base = 1;
   // 倍率の幅。AR は実寸なので、机の置物から見上げる大きさまで要る。
@@ -370,11 +372,18 @@ export function createStage(opt){
     // ヒットテストは投げることがある（source が閉じた、参照空間が変わった）。
     // 面が読めないだけなので、その回は「当たらなかった」として進める。ここを
     // 素通しにすると、呼び出し元の演技も効果もまとめて止まる。
+    //
+    // ただし **握りつぶしたままにはしない**。投げていたのか、0件だったのか、
+    // 当たったのに姿勢を返さなかったのかは、外から見るとどれも「輪が出ない」に
+    // なる。エクゾディアは同じ場所で当たるのにこちらは当たらない、という差を
+    // 追うのに、この3つを混ぜたままでは何も言えない。数を控えて画面に出す。
     let pose = null;
     try {
       const hits = frame.getHitTestResults(hitSource);
-      pose = hits.length ? hits[0].getPose(space) : null;
-    } catch (e){ pose = null; void e; }
+      nHits = hits.length;
+      pose = nHits ? hits[0].getPose(space) : null;
+      hitErr = '';
+    } catch (e){ pose = null; nHits = -1; hitErr = (e && (e.name || e.message)) || String(e); }
 
     // 当たった面の上にだけ輪を出す。当たらないあいだは出さない。カメラの前に
     // 逃がすと、現実のどこにも乗っていない輪がこちらについて回る。
@@ -389,9 +398,16 @@ export function createStage(opt){
       hitOK = false;
       // 面が返ってこない状態が続いたら、そう言う。黙って輪が出ないままだと、
       // AR に入れていないのか面が見つからないのかが区別できない。
-      if (performance.now() - lastHit > 2500)
-        say('nohit', 'AR には入っています。まだ面を見つけられません。<br>'
-                   + '模様のある床や机へ、30cm ほど離して向けてください');
+      // 「0件」と「投げた」と「当たったのに姿勢が無い」を書き分ける。
+      if (performance.now() - lastHit > 2500){
+        const sec = Math.round((performance.now() - lastHit) / 1000);
+        const what = hitErr ? '例外 ' + hitErr
+                   : nHits > 0 ? '当たり ' + nHits + '件・姿勢なし'
+                   : '当たり 0件';
+        say('nohit' + what,
+            'AR には入っています。まだ面を見つけられません（' + what + '／' + sec + '秒）<br>'
+          + 'ゆっくり左右に動かしながら、模様のある床や机へ向けてください');
+      }
     }
   }
 
