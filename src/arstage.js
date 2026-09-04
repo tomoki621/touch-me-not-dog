@@ -331,13 +331,30 @@ export function createStage(opt){
   // こちらは映像要素があるので、手の検出も使える。
   function startFlat(){
     tapme.textContent = 'カメラを起動しています…';
+    // 出せる限りを頼む。1920x1080 で頭打ちにしていたが、実測で 2160x3840 まで
+    // 出る端末があった（cam.html で確認）。ideal なので、届かない端末は近い
+    // ところへ勝手に落ちる。ここが AR のパススルーとの唯一の差になる。
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' },
-               width: { ideal: 1920 }, height: { ideal: 1080 } },
+               width: { ideal: 3840 }, height: { ideal: 2160 } },
       audio: false,
     }).then((s) => {
       opt.cam.srcObject = s;
       return opt.cam.play();
+    }).then(() => {
+      // 実際に開けた大きさを控える。頼んだ値と開けた値は別物なので、?dbg で見る。
+      // ここは覗くだけの処理なので、何があっても先へ進める。囲まずに書いて、
+      // 映像要素が本物でないとき（模擬）に起動ごと止めた。
+      try {
+        const t = opt.cam.srcObject && opt.cam.srcObject.getVideoTracks
+          ? opt.cam.srcObject.getVideoTracks()[0] : null;
+        const g = t && t.getSettings ? t.getSettings() : {};
+        camNote = '実写 ' + (opt.cam.videoWidth || g.width || '?') +
+                  'x' + (opt.cam.videoHeight || g.height || '?') +
+                  ' / 画面 ' + Math.round(innerWidth * devicePixelRatio) +
+                  'x' + Math.round(innerHeight * devicePixelRatio) +
+                  '(dpr' + devicePixelRatio + ')';
+      } catch (e){ void e; }
     }).then(begin)
       .catch((err) => fail(err, 'はじめられませんでした。カメラを許可してから開き直してください'));
   }

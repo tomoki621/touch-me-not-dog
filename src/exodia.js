@@ -1237,8 +1237,10 @@ function xrFailed(err){
 function startFlat(){
   tapme.textContent = 'カメラを起動しています…';
   navigator.mediaDevices.getUserMedia({
+    // 出せる限りを頼む。1920x1080 で頭打ちにしていたが、実測で 2160x3840 まで
+    // 出る端末があった（cam.html で確認）。カードの絵柄が読めるかどうかが変わる。
     video: { facingMode: { ideal: 'environment' },
-             width: { ideal: 1920 }, height: { ideal: 1080 } },
+             width: { ideal: 3840 }, height: { ideal: 2160 } },
     audio: false,
   }).then((s) => {
     cam.srcObject = s;
