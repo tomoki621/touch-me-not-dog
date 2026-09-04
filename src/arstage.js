@@ -15,6 +15,14 @@
 // みたが、エクゾディアに揃える。置いた一度きり座標を書き、あとは触らない。
 // 端末が自己位置を推定し直すと少し流れる。それは承知のうえ。
 //
+// 【AR では、置くまでキャラを出さない】これもエクゾディアに合わせる。あちらは
+// 召喚するまで何も出さない。こちらは置く前から出していたので、AR に入った瞬間
+// から実寸（25cm）のまま初期位置＝カメラの 4.2m 先に立っていた。豆粒が明後日の
+// 方向に浮かんで見える。「輪が出ないまま、小さいのがあらぬところに出てくる」の
+// 正体はこれ。輪が出ないこと自体は面が見つかっていないだけで、そちらは正しい。
+// 貼り付け表示では逆に、置く前から見えているのが正しい（指で位置を決めるので、
+// 見えないと動かしようがない）。
+//
 // エクゾディア（src/exodia.js）が正で、ここはそれに合わせる。置き方を変える
 // ときは、先にあちらを見る。
 //
@@ -202,6 +210,7 @@ export function createStage(opt){
                                      _camP.z - stage.position.z), 0);
     reticle.visible = false;
     placed = true;
+    stage.visible = true;
     if (opt.onPlaced) opt.onPlaced();
   }
 
@@ -214,6 +223,10 @@ export function createStage(opt){
     hitOK = false;
     stage.scale.setScalar(base);
     stage.rotation.set(0, 0, 0);
+    // AR では、置くまでキャラを出さない。置き場所も向きも決まっていないうちに
+    // 出すと、実寸（25cm）のまま初期位置＝4.2m 先に立って、豆粒が明後日の方向に
+    // 浮かぶ。エクゾディアが召喚まで何も出さないのと同じ考え。
+    stage.visible = !xr;
     if (!xr) stage.position.set(0, 0, -DIST);
   }
 
@@ -265,9 +278,12 @@ export function createStage(opt){
       base = opt.arH / opt.bodyH;
       sLo = 0.25; sHi = 4.0;      // 実寸で 6cm ほどから 1m ほどまで
       stage.scale.setScalar(base);
+      // 置くまでは出さない（理由は home() の但し書き）。
+      stage.visible = false;
       session.addEventListener('end', () => {
         xr = null; hitSource = null; placed = false;
         reticle.visible = false; hitOK = false;
+        stage.visible = true;
         document.body.classList.remove('xr');
         renderer.xr.enabled = false;
       });
@@ -286,6 +302,7 @@ export function createStage(opt){
     // 途中まで AR が動いていた場合、輪が出たまま残ることがある。貼り付け表示には
     // カメラの姿勢が無いので、残った輪は画面に貼りついてどこまでもついて回る。
     reticle.visible = false; hitOK = false;
+    stage.visible = true;   // 貼り付け表示では、置く前から見えているのが正しい
     document.body.classList.remove('xr');
     renderer.xr.enabled = false;
     base = 1;
