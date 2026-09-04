@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import * as THREE from 'three';
-import { applyPose, kneelDrop, poseWeights } from '../src/elfpose.js';
+import { applyPose, kneelDrop, poseWeights, bodySwing } from '../src/elfpose.js';
 
 const out = process.argv[2] || 'pose.png';
 // 'u0.56' の形なら、その時点の重みを poseWeights から取る。数字を並べたときは
@@ -227,6 +227,22 @@ const SV = (() => {
 // KNEEL_DROP × 守備の重み だけ沈める。ここでも同じに沈めないと、描き出した絵と
 // 画面に出る絵が食い違う。数字は src/elf.js と揃えてある。
 const FOOT_SINK = -0.05;
+
+// 体そのものの動き（前傾・踏み込み・沈み）。アプリは入れ物ごと動かす。ここでも
+// 同じに動かさないと、描き出しでは踏み込んで見えるのに実機では反っている、と
+// いう食い違いが出る（実際にそれで一度外した）。足元を軸に回してから寄せる。
+const bs = bodySwing(p);
+if (bs.pitch || bs.dz || bs.dy){
+  const cs = Math.cos(bs.pitch), sn = Math.sin(bs.pitch);
+  const move = (v) => {
+    const y = v[1], z = v[2];
+    v[1] = y * cs - z * sn + bs.dy;      // three の Rx と同じ向き
+    v[2] = y * sn + z * cs + bs.dz;
+  };
+  for (const v of V)  move(v);
+  for (const v of SV) move(v);
+}
+
 const drop = FOOT_SINK - kneelDrop(p.g);
 for (const v of V)  v[1] += drop;
 for (const v of SV) v[1] += drop;
@@ -235,7 +251,9 @@ for (const v of SV) v[1] += drop;
 const lowest = V.reduce((m, v) => Math.min(m, v[1]), 9e9);
 const at = (n) => { const v = new THREE.Vector3(); bones[n].getWorldPosition(v); return v; };
 console.log('重み  守備 ' + p.g.toFixed(2) + '  頭上 ' + (p.m || 0).toFixed(2) +
-            '  ため ' + p.w.toFixed(2) + '  斬り抜き ' + p.c.toFixed(2));
+            '  ため ' + p.w.toFixed(2) + '  斬り抜き ' + p.c.toFixed(2) +
+            '  踏み込み ' + (p.hip || 0).toFixed(2) +
+            '  前傾 ' + bs.pitch.toFixed(2) + '  前へ ' + bs.dz.toFixed(2));
 console.log('沈み込み ' + drop.toFixed(3) + '  体の最下点 y=' + lowest.toFixed(3) + '   0 に近いほど、床にちょうど乗っている');
 for (const n of ['Hips','RightLeg','RightFoot','LeftLeg','LeftFoot','RightHand','LeftHand','Head']){
   const v = at(n);

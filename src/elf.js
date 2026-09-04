@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createStage } from './arstage.js';
-import { poseWeights, applyPose, kneelDrop, HIT_AT } from './elfpose.js';
+import { poseWeights, applyPose, kneelDrop, bodySwing, HIT_AT } from './elfpose.js';
 
 const $ = (id) => document.getElementById(id);
 const acts = $('acts'), hud = $('hud'), tip = $('tip');
@@ -345,21 +345,19 @@ function update(frame){
   const breathe = Math.sin(st.t*2.2)*0.012;
   // 節目は src/elfpose.js の poseWeights と同じ。ため 0.28、打点 0.56。
   // ここだけ別の刻みにすると、腰と剣が別々に動いて、振っている感じが消える。
-  const uu = 1 - st.swing;
-  const cc = st.swing > 0.001 ? (uu < 0.40 ? 0 : uu < 0.56 ? Math.sin((uu-0.40)/0.16*Math.PI/2) : Math.max(0, 1-(uu-0.56)/0.44)) : 0;
-  const ww = st.swing > 0.001 ? (uu < 0.28 ? Math.sin(uu/0.28*Math.PI/2) : Math.max(0, 1-(uu-0.28)/0.12)) : 0;
-  // ためで軽く反り、斬り下ろしで前へ体重を乗せる。逆にすると後退して見える。
-  // 腕の振りだけでは「払った」に見えるので、体重の移りをここで大きく取る。
-  chara.rotation.x = ww*0.16 - cc*0.46;
+  // 体そのものの動きは src/elfpose.js の bodySwing が持つ。ここに置いていたころ、
+  // 描き出しの道具には載らず、実機だけ上体が後ろへ反っていた。
+  const bs = bodySwing(p);
+  chara.rotation.x = bs.pitch;
   // ひざをつくと腰が落ちる。骨を回しただけでは腰は下がらないので、体ごと沈める。
   // 沈めないと、宙に浮いたまま脚を折った形になる。
   chara.position.set(
     0,
     FOOT_SINK - kneelDrop(st.guard)
-      + Math.min(0, (1-e)*-0.12 - cc*0.20) + (Math.random()-0.5)*st.shakeT*0.03,
+      + Math.min(0, (1-e)*-0.12 + bs.dy) + (Math.random()-0.5)*st.shakeT*0.03,
     // キャラの正面は +Z。踏み込みは正でないと後退して見える。
     // ひざ立ちは前足が前へ出るので、その分だけ体を後ろへ引いて中心を保つ。
-    -st.guard*0.16 + cc*0.38 - ww*0.12
+    -st.guard*0.16 + bs.dz
   );
   chara.scale.set(1-breathe*0.5, 1+breathe, 1-breathe*0.5);
 
