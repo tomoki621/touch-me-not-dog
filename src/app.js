@@ -14,17 +14,26 @@ import { createStage } from './arstage.js';
 
 const $ = (id) => document.getElementById(id);
 const acts = $('acts'), hud = $('hud'), tip = $('tip');
+let xrOn = false;          // AR の中に居るか。案内の文と状態の表示がここで変わる。
 
-// ---------------------------------------------------------------- 不具合の表示
-// 普段は何も出さない。壊れたときだけ、その理由を一行で出す。
+// ---------------------------------------------------------------- 状態の表示
+// 普段は何も出さない。壊れたとき、または AR に入れず貼り付け表示へ落ちたときに、
+// その理由を一行で出す。エルフの剣士と同じ作りにしてある。前はここだけ黙って
+// いて、「輪が出てこない」の原因が端末の側にあるのか作りの側にあるのか、
+// ルイーズでは確かめる手立てが無かった。
+// err（例外）と mode（貼り付け表示の断り）は分けて持つ。片方が出ているせいで
+// もう片方が隠れると、直すべきものを見落とす。
 const dbgEl = $('dbg');
-const dbg = { frames:0, models:{}, err:'' };
+const dbg = { frames:0, models:{}, err:'', mode:'', live:'' };
+// ?dbg を付けて開くと、置き場所の実測を出し続ける。
+const LIVE = /(^|[?&])dbg(=|&|$)/.test(location.search);
+const BR = '\n';   // #dbg は white-space:pre-wrap。行を分けて並べる。
 dbgEl.addEventListener('click', () => { dbgEl.style.display = 'none'; });
 function renderDbg(){
   const broken = Object.keys(dbg.models).filter(k => !/^(OK|取得中)$/.test(dbg.models[k]));
-  const msg = dbg.err ? dbg.err
-            : broken.length ? broken.map(k => k + ': ' + dbg.models[k]).join(' / ')
-            : '';
+  const msg = [dbg.err,
+               broken.length ? broken.map(k => k + ': ' + dbg.models[k]).join(' / ') : '',
+               dbg.mode, dbg.live].filter(Boolean).join(BR);
   dbgEl.style.display = msg ? 'block' : 'none';
   if (msg) dbgEl.textContent = msg;
 }
@@ -51,14 +60,21 @@ const ar = createStage({
   gl: $('gl'), cam: $('cam'), touch: $('touch'), ov: $('ov'),
   gate: $('gate'), note: $('note'), tapme: $('tapme'), tip,
   bodyH: BODY_H, arH: AR_H,
-  onReady: (isXR) => {
+  onReady: (isXR, why) => {
     hud.classList.add('on');
     // 描き始めるのはカメラ／XR が立ち上がってから。エクゾディアと同じ順。
     // 先に回し始めても three は XR へ繋ぎ直してくれるが、実績のある順に揃える。
     renderer.setAnimationLoop(tick);
+    xrOn = isXR;
     tip.innerHTML = isXR
       ? '床や机に輪を合わせて「置く」<br>2本指、またはボタンで大きさと向き'
       : '1本指で位置、2本指で大きさと向き<br>置いたら「置く」';
+    // 貼り付け表示に落ちたことを黙っていない。この表示には現実の面が無いので、
+    // 置き場所の輪はそもそも出ない。出ないのが正しい振る舞いなのか、壊れて
+    // いるのかは、落ちた理由まで出さないと区別がつかない。
+    if (!isXR) dbg.mode = '貼り付け表示です（' + (why || '理由不明') +
+      '）。現実の面を探せないので、置き場所の輪は出ません。指で位置を決めます。';
+    renderDbg();
   },
   onPlaced: () => {
     acts.classList.add('on');
@@ -412,6 +428,20 @@ function boneSet(name, rots){
 const clock = new THREE.Clock();
 const _camW = new THREE.Vector3();
 
+// いま何がどこに居るか。歩いて見比べるための数。
+const _spW = new THREE.Vector3(), _cpW = new THREE.Vector3();
+function liveLine(){
+  stage.getWorldPosition(_spW);
+  _cpW.setFromMatrixPosition(camera.matrixWorld);
+  const f = (v) => v.toFixed(2);
+  const xyz = (v) => f(v.x) + ' ' + f(v.y) + ' ' + f(v.z);
+  return 'AR=' + (ar.isXR() ? '入' : '貼付') +
+         ' 置=' + (ar.isPlaced() ? '済' : '未') + BR +
+         '像   ' + xyz(_spW) + BR +
+         'カメラ ' + xyz(_cpW) + BR +
+         '差   ' + f(_spW.distanceTo(_cpW)) + '  ← 歩いて、変わらない方が原因';
+}
+
 function tick(time, frame){
   dbg.frames++;
   try { update(frame); }
@@ -419,12 +449,18 @@ function tick(time, frame){
     if (!dbg.err) dbg.err = (e.message || e) + ' | ' + ((e.stack || '').split(/\n/)[1] || '').trim();
   }
   renderer.render(scene, camera);
-  if (dbg.frames % 20 === 0) renderDbg();
+  if (dbg.frames % 20 === 0){
+    if (LIVE) dbg.live = liveLine();
+    renderDbg();
+  }
 }
 function update(frame){
   const dt = Math.min(clock.getDelta(), 0.05);
   st.t += dt;
-  ar.update(frame);
+  // AR の面倒は AR の中で閉じる。ここで投げさせると、以降の演技と効果がまとめて
+  // 飛んで、キャラが固まる。置き場所が一回分ずれるだけで済ませる（エルフと同じ）。
+  try { ar.update(frame); }
+  catch(e){ dbg.err = 'AR: ' + (e.message || e); }
 
   if (guardHeld) poseDelay = Math.max(0, poseDelay - dt);
   st.guardTarget = (guardHeld && poseDelay <= 0) ? 1 : 0;
