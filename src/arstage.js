@@ -112,7 +112,7 @@ export function createStage(opt){
   // 基準の倍率。AR は実寸なので、ここが背丈をメートルへ読み替える係数になる。
   let base = 1;
   // 倍率の幅。AR は実寸なので、机の置物から見上げる大きさまで要る。
-  let sLo = 0.35, sHi = 1.8;
+  let sLo = 0.20, sHi = 1.8;
   const clampS = (v) => Math.min(base * sHi, Math.max(base * sLo, v));
   const clampP = (v) => Math.min(POS_MAX, Math.max(-POS_MAX, v));
 
@@ -280,7 +280,8 @@ export function createStage(opt){
       // AR は実寸。背丈 1.9 のまま置くと 1.9m の巨人になる。机に置く物として
       // 既定はここで決め、あとは指で。
       base = opt.arH / opt.bodyH;
-      sLo = 0.25; sHi = 4.0;      // 実寸で 6cm ほどから 1m ほどまで
+      // 実寸で 2.5cm ほどから 1m ほどまで。下は机の隅に置ける大きさが要る。
+      sLo = 0.10; sHi = 4.0;
       stage.scale.setScalar(base);
       // 置くまでは出さない（理由は home() の但し書き）。
       stage.visible = false;

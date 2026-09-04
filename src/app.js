@@ -384,9 +384,12 @@ const _dRoarRF = new THREE.Vector3(-0.92,  0.28, -0.26);
 const _dRoarL  = new THREE.Vector3( 0.88,  0.36, -0.30);
 const _dRoarLF = new THREE.Vector3( 0.92,  0.28, -0.26);
 // 守備で剣を持つ側を引いて構える向き
-const _dGuardR  = new THREE.Vector3(-0.72, -0.52,  0.46);
-const _dGuardRF = new THREE.Vector3(-0.58, -0.16,  0.80);
-const _dGuardSw = new THREE.Vector3( 0.92,  0.12,  0.37);   // 刃先を体の内側へ
+// 守備の右腕と刀身。盾は左手で体の中心線上へまっすぐ前へ出すので、剣を体の
+// 内側（左）へ寝かせると必ず盾を横切る。実機で刀身が盾の面にめり込んでいた。
+// 剣は右へ逃がし、刃先を上げて、盾の外側に立てておく。
+const _dGuardR  = new THREE.Vector3(-0.86, -0.46,  0.22);   // 上腕：右へ引いて下ろす
+const _dGuardRF = new THREE.Vector3(-0.72, -0.10,  0.68);   // 前腕：右のまま前へ
+const _dGuardSw = new THREE.Vector3(-0.46,  0.82,  0.34);   // 刃先を右上へ立てる
 const _qRoll = new THREE.Quaternion();
 // 骨の節を、指定した向きへ向ける。chara 空間は +X=キャラの左、+Y=上、+Z=正面。
 // 角度の符号を積み上げると取り違えるので、向きそのものをベクトルで書く。
@@ -536,15 +539,20 @@ function update(frame){
     boneSet('LeftForeArm', null);
 
     // 脚。腰を落とすので腿は前へ（負）、膝は後ろへ畳む（正）。
-    boneSet('LeftUpLeg',  [[1,0,0, -g*0.55 + c*0.20]]);
-    boneSet('RightUpLeg', [[1,0,0, -g*0.55 - c*0.15]]);
-    boneSet('LeftLeg',    [[1,0,0,  g*1.10 - c*0.15]]);
-    boneSet('RightLeg',   [[1,0,0,  g*1.10]]);
+    // 斬るときは右足を一歩前へ踏み出す。前は 0.15 しか出しておらず、腕だけ
+    // 振って足は揃ったままだった。踏み込みは腿を前へ、後ろ足は残して伸ばす。
+    boneSet('LeftUpLeg',  [[1,0,0, -g*0.55 + c*0.34]]);   // 後ろ足は残す
+    boneSet('RightUpLeg', [[1,0,0, -g*0.55 - c*0.46]]);   // 前へ踏み出す
+    boneSet('LeftLeg',    [[1,0,0,  g*1.10 - c*0.10]]);
+    boneSet('RightLeg',   [[1,0,0,  g*1.10 + c*0.26]]);   // 前足は膝を軽く畳む
 
-    // 体幹。守備は反り、咆哮も反り、打ち抜きは前へ入る。
-    boneSet('Spine',   [[1,0,0, -g*0.28 + r*0.14], [0,1,0, tw0]]);
-    boneSet('Spine01', [[0,1,0, tw1], [1,0,0, -g*0.16 - c*0.12]]);
-    boneSet('Spine02', [[0,1,0, tw2], [1,0,0, r*0.30 - c*0.18 - g*0.08]]);
+    // 体幹。X まわりは正が前傾（頭の骨の「正で下を向く」と同じ向き）。
+    // 守備は反り（負）、打ち抜きは前へ入る（正）。ここが負のままだったので、
+    // 斬るたびに のけぞって 見えていた。踏み込みは前、上体は後ろ、で相殺されて
+    // いたぶん、腕だけが振られているように映る。
+    boneSet('Spine',   [[1,0,0, -g*0.28 + r*0.14 + c*0.08], [0,1,0, tw0]]);
+    boneSet('Spine01', [[0,1,0, tw1], [1,0,0, -g*0.16 + c*0.12]]);
+    boneSet('Spine02', [[0,1,0, tw2], [1,0,0, r*0.30 + c*0.16 - g*0.08]]);
 
     // 武器の向きは、手の骨のローカル軸に預けない。あの軸がどう取られているかは
     // モデル側の都合で、預けると刀身が拳を横切って「刺さって」見える。
@@ -637,8 +645,11 @@ function update(frame){
   const uu = 1 - st.swing;
   const cc = st.swing > 0.001 ? (uu < 0.35 ? 0 : uu < 0.55 ? Math.sin((uu-0.35)/0.20*Math.PI/2) : Math.max(0, 1-(uu-0.55)/0.45)) : 0;
   const ww = st.swing > 0.001 ? (uu < 0.35 ? Math.sin(uu/0.35*Math.PI/2) : Math.max(0, 1-(uu-0.35)/0.15)) : 0;
-  // ためで軽く反り、振り下ろしで前へ体重を乗せる。逆にすると後退して見える。
-  chara.rotation.x = ww*0.12 - cc*0.34 - roarU*0.14;
+  // ためで軽く反り、振り下ろしで前へ体重を乗せる。
+  // chara は素の Group なので three の定義そのまま。rotation.x が正だと上ベクトル
+  // (0,1,0) が +Z（正面）側へ倒れる＝前傾。ここが打点で負だったので、踏み込みと
+  // 同時に上体だけ のけぞって いた。ため が負（軽く反る）、打点が正。
+  chara.rotation.x = -ww*0.10 + cc*0.30 - roarU*0.14;
   chara.position.set(
     st.guard*-0.10,
     FOOT_SINK + Math.min(0, (1-e)*-0.12 - st.guard*0.24 - cc*0.13) + (Math.random()-0.5)*st.shakeT*0.03,
