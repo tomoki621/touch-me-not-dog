@@ -199,10 +199,18 @@ load('models/elf.glb', (root) => {
   // 剣は手の骨の子にする。これで腕の動きに完全に追従する。
   if (bones.RightHand){
     bones.RightHand.add(swordPivot);
-    // 骨は親の尺度を引き継ぐので、剣側で打ち消して実寸を決める。
-    const ws = new THREE.Vector3();
+    // 骨は親の尺度を引き継ぐので、剣側で打ち消して大きさを決める。
+    //
+    // 打ち消すのは「骨の鎖ぶん」だけ。getWorldScale には stage.scale まで
+    // 入っていて、それも割ってしまうと、剣は場面の倍率に依らない一定の大きさに
+    // なる。AR は実寸なので stage.scale は 0.13 ほど（25cm の置物）。読み込みが
+    // AR の起動より後になると 1/0.13 ≒ 7.7 倍の剣が付き、以後は全体と一緒に
+    // 縮むだけなので「武器だけ小さくならない」に見える。場面の倍率は戻す。
+    const ws = new THREE.Vector3(), ss = new THREE.Vector3();
     bones.RightHand.getWorldScale(ws);
-    swordPivot.scale.setScalar(SWORD_LEN / (ws.x || 1));
+    stage.getWorldScale(ss);
+    const boneS = (ws.x / (ss.x || 1)) || 1;
+    swordPivot.scale.setScalar(SWORD_LEN / boneS);
     // 骨は拳ではなく手首にある。そのまま置くと手首に刺さって見えるので、
     // 前腕から手へ伸びる長さを測って、その割合だけ先へ送る。数字で決め打ちを
     // しないので、模型を差し替えても柄の位置がずれない。

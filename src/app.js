@@ -209,8 +209,16 @@ load('models/rouise.glb', (root) => {
 
   // ボーンは親のスケールを引き継ぐので、武器側で打ち消して実寸を決める
   const ws = new THREE.Vector3();
-  if (bones.RightHand){ bones.RightHand.getWorldScale(ws); swordPivot.scale.setScalar(SWORD_LEN/ws.x); }
-  if (bones.LeftHand){  bones.LeftHand.getWorldScale(ws);  shieldPivot.scale.setScalar(SHIELD_LEN/ws.x); }
+  // 打ち消すのは「骨の鎖ぶん」だけ。getWorldScale には stage.scale まで入って
+  // いて、それも割ると、武器は場面の倍率に依らない一定の大きさになる。AR は実寸
+  // なので stage.scale は 0.13 ほど。読み込みが AR の起動より後になると 7.7 倍の
+  // 剣が付き、以後は全体と一緒に縮むだけなので「武器だけ小さくならない」に
+  // 見える。場面の倍率は戻してから割る。
+  const ss = new THREE.Vector3();
+  stage.getWorldScale(ss);
+  const boneS = (v) => (v / (ss.x || 1)) || 1;
+  if (bones.RightHand){ bones.RightHand.getWorldScale(ws); swordPivot.scale.setScalar(SWORD_LEN/boneS(ws.x)); }
+  if (bones.LeftHand){  bones.LeftHand.getWorldScale(ws);  shieldPivot.scale.setScalar(SHIELD_LEN/boneS(ws.x)); }
 
   // 手の骨のローカル座標。Armature の 0.01 倍のせいで尺度が約100倍になるので、
   // 実行時に変換せず、手元で算出した値をそのまま置く。
