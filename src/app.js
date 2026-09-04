@@ -384,12 +384,12 @@ const _dRoarRF = new THREE.Vector3(-0.92,  0.28, -0.26);
 const _dRoarL  = new THREE.Vector3( 0.88,  0.36, -0.30);
 const _dRoarLF = new THREE.Vector3( 0.92,  0.28, -0.26);
 // 守備で剣を持つ側を引いて構える向き
-// 守備の右腕と刀身。盾は左手で体の中心線上へまっすぐ前へ出すので、剣を体の
-// 内側（左）へ寝かせると必ず盾を横切る。実機で刀身が盾の面にめり込んでいた。
-// 剣は右へ逃がし、刃先を上げて、盾の外側に立てておく。
-const _dGuardR  = new THREE.Vector3(-0.86, -0.46,  0.22);   // 上腕：右へ引いて下ろす
-const _dGuardRF = new THREE.Vector3(-0.72, -0.10,  0.68);   // 前腕：右のまま前へ
-const _dGuardSw = new THREE.Vector3(-0.46,  0.82,  0.34);   // 刃先を右上へ立てる
+// 守備の右腕と刀身。剣は前へ、盾は手前へ。
+// 剣を右へ逃がすと守りの形に見えないので、刃は体の内側へ寝かせたまま。代わりに
+// 剣の腕を前へ伸ばし、盾を体側へ引く。前後にずらすことで、剣が盾へめり込まない。
+const _dGuardR  = new THREE.Vector3(-0.34, -0.34,  0.88);   // 上腕：前へ出す
+const _dGuardRF = new THREE.Vector3(-0.16, -0.06,  0.99);   // 前腕：まっすぐ前へ伸ばす
+const _dGuardSw = new THREE.Vector3( 0.92,  0.12,  0.37);   // 刃先を体の内側へ
 const _qRoll = new THREE.Quaternion();
 // 骨の節を、指定した向きへ向ける。chara 空間は +X=キャラの左、+Y=上、+Z=正面。
 // 角度の符号を積み上げると取り違えるので、向きそのものをベクトルで書く。
@@ -584,17 +584,18 @@ function update(frame){
     aimBone('RightForeArm', 'RightHand', _dir);
     chara.updateMatrixWorld(true);
 
-    // 左腕。守備ではまっすぐ前へ伸ばす。肘を曲げると盾が顔へ寄ってめり込む。
+    // 左腕。守備では肘を畳んで盾を体の手前へ寄せる。まっすぐ前へ伸ばすと盾が
+    // 遠く、前へ出した剣と同じ深さに並んでめり込む。上腕は下げ、前腕で持ち上げる。
     _dA.set( 0.38, -0.90,  0.05);           // 構え：下ろす
-    _dB.set( 0.04,  0.02,  0.999);          // 守備：体の中心線上へまっすぐ前
+    _dB.set( 0.26, -0.62,  0.74);           // 守備：上腕は下ろしぎみ。肘を体の横に残す。
     _dir.copy(_dA).lerp(_dB, g);
     if (r > 0.01) _dir.lerp(_dRoarL, r);
     aimBone('LeftArm', 'LeftForeArm', _dir);
     chara.updateMatrixWorld(true);
 
-    // 前腕も同じ向きへ。上腕と揃えれば肘が伸びる。
+    // 前腕は上げて胸の前へ。上腕と揃えないので肘が曲がり、盾が体側へ寄る。
     _dA.set( 0.26, -0.95,  0.14);
-    _dB.set( 0.02,  0.04,  0.999);
+    _dB.set( 0.06,  0.30,  0.95);
     _dir.copy(_dA).lerp(_dB, g);
     if (r > 0.01) _dir.lerp(_dRoarLF, r);
     aimBone('LeftForeArm', 'LeftHand', _dir);
