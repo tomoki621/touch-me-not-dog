@@ -364,18 +364,30 @@ export function createStage(opt){
   // 置いたあとは何もしない。座標は place() で一度書いたきりで、以後は触らない。
   // 触るとしたら錨だが、それは外した（先頭の但し書き）。エクゾディアと同じ。
   // 画質の出どころを数字で出す。値は変わらないので一度拾えば足りる。
+  //
+  // 前は baseLayer からしか層の大きさを読んでいなかった。three 0.149 は layers が
+  // 使える端末では投影レイヤーを作るので、baseLayer は空になり、行ごと消えていた。
+  // 実際に焼いている面の大きさは描画バッファから読むほうが確実。
   let camNote = '';
   function measure(frame){
     if (camNote || !frame) return;
     const parts = [];
     const gl = renderer.getContext();
-    const bl = xr && xr.renderState && xr.renderState.baseLayer;
-    if (bl) parts.push('XRの層 ' + bl.framebufferWidth + 'x' + bl.framebufferHeight);
+    parts.push('XRの層 ' + gl.drawingBufferWidth + 'x' + gl.drawingBufferHeight);
     parts.push('画面 ' + Math.round(innerWidth * devicePixelRatio) +
                'x' + Math.round(innerHeight * devicePixelRatio) +
                '(dpr' + devicePixelRatio + ')');
-    if (!WANT_CAM){ camNote = parts.join(' / '); void gl; return; }
-    // 実写の解像度。view.camera が来るのは camera-access が通ったときだけ。
+    if (!WANT_CAM){ camNote = parts.join(' / '); return; }
+
+    // 実写に触れるかどうかを、three つに分けて出す。「通らなかった」だけでは、
+    // 端末に無いのか、頼み方が悪いのか、許可が下りなかったのかが分からない。
+    const hasApi = typeof XRWebGLBinding !== 'undefined' &&
+                   'getCameraImage' in XRWebGLBinding.prototype;
+    const granted = xr && xr.enabledFeatures
+      ? [...xr.enabledFeatures].includes('camera-access')
+      : null;
+    parts.push('getCameraImage ' + (hasApi ? '有' : '無'));
+    parts.push('許可 ' + (granted === null ? '不明' : granted ? '下りた' : '下りず'));
     let got = false;
     try {
       const space = renderer.xr.getReferenceSpace();
@@ -384,7 +396,7 @@ export function createStage(opt){
         if (v.camera){ parts.push('実写 ' + v.camera.width + 'x' + v.camera.height); got = true; }
       }
     } catch (e){ parts.push('実写 読めず(' + ((e && e.name) || e) + ')'); got = true; }
-    if (!got) parts.push('実写 camera-access が通らなかった');
+    if (!got) parts.push('実写 view.camera が無い');
     camNote = parts.join(' / ');
   }
 
