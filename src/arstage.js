@@ -109,6 +109,11 @@ export function createStage(opt){
   // 留まらない」の原因が見えない。貼り付けにはカメラの姿勢が無いので、
   // 置いても現実の一点に留められない。それは直しようがなく、伝えるしかない。
   let flatWhy = '';
+  // 面がいつから当たっていないか。案内を出し分けるためだけに持つ。
+  // 「AR に入れていない」のか「入っているが面を返さない」のかは、画面から
+  // 区別できないと直しようがない。エクゾディアでは輪が出るのにこちらでは出ない、
+  // という報告に対して、どちらなのかを言えるようにしておく。
+  let lastHit = 0, tipState = '';
   // 基準の倍率。AR は実寸なので、ここが背丈をメートルへ読み替える係数になる。
   let base = 1;
   // 倍率の幅。AR は実寸なので、机の置物から見上げる大きさまで要る。
@@ -221,6 +226,7 @@ export function createStage(opt){
     // 落ちてきたときの輪が画面に貼りついたまま、カメラについて回る。
     reticle.visible = false;
     hitOK = false;
+    tipState = ''; lastHit = performance.now();
     stage.scale.setScalar(base);
     stage.rotation.set(0, 0, 0);
     // AR では、置くまでキャラを出さない。置き場所も向きも決まっていないうちに
@@ -289,7 +295,7 @@ export function createStage(opt){
       });
       return renderer.xr.setSession(session).then(() => session.requestReferenceSpace('viewer'));
     }).then((viewer) => xr.requestHitTestSource({ space: viewer }))
-      .then((src) => { hitSource = src; begin(); })
+      .then((src) => { hitSource = src; lastHit = performance.now(); begin(); })
       .catch(xrFailed);
   }
 
@@ -350,9 +356,16 @@ export function createStage(opt){
   // 置いたあとは何もしない。座標は place() で一度書いたきりで、以後は触らない。
   // 触るとしたら錨だが、それは外した（先頭の但し書き）。エクゾディアと同じ。
   function update(frame){
-    if (!frame || placed || !hitSource) return;
+    if (!frame || placed) return;
     const space = renderer.xr.getReferenceSpace();
     if (!space) return;
+    // 面の検出そのものを頼めていない場合。ここで黙ると、輪が出ない理由が
+    // 「面が無い」なのか「そもそも探していない」なのか分からない。
+    if (!hitSource){
+      say('nosrc', 'AR には入っていますが、面の検出を頼めていません。<br>'
+                 + '一度閉じて開き直してください');
+      return;
+    }
 
     // ヒットテストは投げることがある（source が閉じた、参照空間が変わった）。
     // 面が読めないだけなので、その回は「当たらなかった」として進める。ここを
@@ -369,10 +382,24 @@ export function createStage(opt){
       reticle.matrix.fromArray(pose.transform.matrix);
       reticle.visible = true;
       hitOK = true;
+      lastHit = performance.now();
+      say('aim', '床や机に輪を合わせて「置く」<br>2本指、またはボタンで大きさと向き');
     } else {
       reticle.visible = false;
       hitOK = false;
+      // 面が返ってこない状態が続いたら、そう言う。黙って輪が出ないままだと、
+      // AR に入れていないのか面が見つからないのかが区別できない。
+      if (performance.now() - lastHit > 2500)
+        say('nohit', 'AR には入っています。まだ面を見つけられません。<br>'
+                   + '模様のある床や机へ、30cm ほど離して向けてください');
     }
+  }
+
+  // 案内の差し替え。同じ文を毎フレーム書き込まない（読んでいる途中で点滅する）。
+  function say(key, html){
+    if (!tip || tipState === key) return;
+    tipState = key;
+    tip.innerHTML = html;
   }
 
   return {
