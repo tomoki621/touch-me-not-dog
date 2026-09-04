@@ -218,12 +218,15 @@ export function createStage(opt){
     reticle.visible = false;
     placed = true;
     stage.visible = true;
+    // 狙いの十字を消す合図。置くまでは出しておく（下の但し書き）。
+    document.body.classList.add('put');
     if (opt.onPlaced) opt.onPlaced();
   }
 
   // 置き直す。AR では面を選ぶところからやり直し、貼り付け表示では真ん中へ戻す。
   function home(){
     placed = false;
+    document.body.classList.remove('put');
     // 貼り付け表示には面が無いので、輪も出ない。ここで消しておかないと、AR から
     // 落ちてきたときの輪が画面に貼りついたまま、カメラについて回る。
     reticle.visible = false;
@@ -243,7 +246,8 @@ export function createStage(opt){
   // 両方で出す。ここを AR だけにすると、貼り付け表示で案内が変わらないまま残る。
   function tryPlace(){
     if (placed) return true;
-    if (!xr){ reticle.visible = false; placed = true; if (opt.onPlaced) opt.onPlaced(); return true; }
+    if (!xr){ reticle.visible = false; placed = true; document.body.classList.add('put');
+              if (opt.onPlaced) opt.onPlaced(); return true; }
     if (!hitOK){ if (tip) tip.textContent = '床や机を探しています。少し動かしてください'; return false; }
     place();
     return true;
@@ -400,13 +404,14 @@ export function createStage(opt){
       // AR に入れていないのか面が見つからないのかが区別できない。
       // 「0件」と「投げた」と「当たったのに姿勢が無い」を書き分ける。
       if (performance.now() - lastHit > 2500){
+        // 狙う先は画面のど真ん中。十字に何を重ねているかで結果が変わる。
         const sec = Math.round((performance.now() - lastHit) / 1000);
         const what = hitErr ? '例外 ' + hitErr
                    : nHits > 0 ? '当たり ' + nHits + '件・姿勢なし'
                    : '当たり 0件';
         say('nohit' + what,
             'AR には入っています。まだ面を見つけられません（' + what + '／' + sec + '秒）<br>'
-          + 'ゆっくり左右に動かしながら、模様のある床や机へ向けてください');
+          + '<b>画面の十字をカードや模様のある面に重ねて</b>、ゆっくり動かしてください');
       }
     }
   }

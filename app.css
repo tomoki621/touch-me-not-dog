@@ -28,7 +28,9 @@
 
   /* 置く先の目印。AR では 3D の輪が出るので、こちらは消す。 */
   #cross{position:fixed;inset:0;z-index:4;opacity:.5;transition:opacity .6s}
-  body.xr #cross{display:none}
+  /* 置くまでは出す。輪は画面のど真ん中から落とした光線が当たった
+     ところにしか出ないので、狙う先が見えないと「輪が出ない」に見える。 */
+  body.xr.put #cross{display:none}
   #cross i{position:absolute;left:50%;top:50%;background:#ffffff88;display:block}
   #cross i:nth-child(1){width:1px;height:26px;transform:translate(-50%,-50%)}
   #cross i:nth-child(2){width:26px;height:1px;transform:translate(-50%,-50%)}
