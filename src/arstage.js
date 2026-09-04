@@ -39,6 +39,14 @@ const POS_MAX = 2.2;      // 貼り付け表示のとき、画面の外へ飛ば
 
 const _camP = new THREE.Vector3();
 
+// ?flat を付けて開くと、AR を試さず貼り付け表示で始める。
+//
+// AR の実写は ARCore が作っている。追跡に足りる解像度（多くの端末で 640x480〜
+// 1280x720）で回した映像を画面いっぱいに引き伸ばすので、カードの絵柄までは読め
+// ない。ページ側から上げる手は無い。貼り付け表示なら getUserMedia で 1920x1080 を
+// 頼めるので、実写ははっきり写る。引き換えに、現実の一点に留める追跡は無くなる。
+const FLAT_ONLY = /(^|[?&])flat(=|&|$)/.test(location.search);
+
 // opt:
 //   gl, cam, touch      canvas / video / 指の受け皿の要素
 //   ov                  dom-overlay に渡す入れ物
@@ -336,6 +344,12 @@ export function createStage(opt){
   function boot(){
     if (gate.dataset.busy) return;
     gate.dataset.busy = '1';
+    // 写真を撮る用。AR を試さずに貼り付け表示で始める（上の但し書き）。
+    if (FLAT_ONLY){
+      flatWhy = '?flat で開いたので、AR を使わず貼り付け表示にしています（実写がはっきり写ります）';
+      startFlat();
+      return;
+    }
     tapme.textContent = '確かめています…';
     const ask = navigator.xr && navigator.xr.isSessionSupported
       ? navigator.xr.isSessionSupported('immersive-ar').catch(() => false)
