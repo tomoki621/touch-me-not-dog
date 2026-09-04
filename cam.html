@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>カメラ画質くらべ</title>
+<!--
+  WebXR のパススルーがボケる件を切り分けるためだけのページ。アプリではない。
+
+  AR（immersive-ar）の背景は ARCore が作っていて、その解像度はページから指定
+  できない。こちらは getUserMedia でカメラを直に開き、出せる限りの解像度を頼む。
+  同じ机・同じカード・同じ距離で見比べれば、ボケの犯人が
+
+    ・カメラそのもの（こちらも同じくボケる）
+    ・WebXR のパススルー経路（こちらだけ鮮明になる）
+
+  のどちらかに決まる。数字も出す。頼んだ解像度と、実際に開けた解像度は別物なので、
+  getSettings() で実測を、getCapabilities() で上限を並べる。
+
+  背面カメラが複数ある端末（広角・超広角・望遠）では、facingMode 任せだと
+  いちばん眠いレンズが選ばれることがある。切り替えられるようにしてある。
+-->
+<style>
+  :root{ --fg:#e8eef7; --dim:#9fb0c6; --line:#ffffff22; --glass:#0b0f16cc; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:#05070b; color:var(--fg);
+    font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif; overflow:hidden; }
+  #cam{ position:fixed; inset:0; width:100%; height:100%; object-fit:cover; background:#000; }
+
+  #gate{ position:fixed; inset:0; z-index:9; display:grid; place-items:center;
+    background:#05070b; text-align:center; padding:24px; transition:opacity .4s; }
+  #gate.gone{ opacity:0; pointer-events:none; }
+  #gate h1{ font-size:19px; font-weight:600; margin:0 0 10px; }
+  #gate p{ font-size:13px; color:var(--dim); line-height:1.7; margin:0 0 22px; max-width:30em; }
+  button{ -webkit-appearance:none; appearance:none; border:1px solid var(--line);
+    background:var(--glass); color:var(--fg); border-radius:999px; padding:12px 26px;
+    font-size:15px; font-family:inherit; backdrop-filter:blur(10px); }
+  button:disabled{ opacity:.4; }
+
+  #bar{ position:fixed; left:0; right:0; top:0; z-index:5; display:flex; gap:10px;
+    padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px; justify-content:center;
+    flex-wrap:wrap; }
+  #bar button{ padding:9px 16px; font-size:13px; }
+
+  #info{ position:fixed; left:0; right:0; bottom:0; z-index:5;
+    padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px));
+    background:linear-gradient(transparent,#05070bdd 22%);
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; line-height:1.65;
+    white-space:pre-wrap; word-break:break-all; }
+  #info b{ color:#8fd0ff; font-weight:600; }
+  #err{ color:#ff9d9d; }
+</style>
+</head>
+<body>
+
+<video id="cam" playsinline muted autoplay></video>
+
+<div id="bar" hidden>
+  <button id="next">カメラを切り替え</button>
+  <button id="max">解像度を最大に</button>
+  <button id="hide">数字を隠す</button>
+</div>
+
+<pre id="info"></pre>
+
+<div id="gate">
+  <h1>カメラ画質くらべ</h1>
+  <p>WebXR を使わず、カメラを直に開いて出せる限りの解像度で映します。<br>
+     AR の画面と、同じ机・同じカード・同じ距離で見比べてください。<br>
+     実際に開けた解像度も下に出ます。</p>
+  <button id="start">はじめる</button>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const video = $('cam'), info = $('info'), gate = $('gate'), bar = $('bar');
+let stream = null, devices = [], at = 0;
+
+const line = (s) => s + '\n';
+function show(extra){
+  const t = stream && stream.getVideoTracks()[0];
+  let s = '';
+  s += line('画面   ' + Math.round(innerWidth * devicePixelRatio) + 'x' +
+            Math.round(innerHeight * devicePixelRatio) + '  (dpr ' + devicePixelRatio + ')');
+  s += line('映像   ' + (video.videoWidth || '-') + 'x' + (video.videoHeight || '-') +
+            '   ← これが実際に画面へ来ている絵の細かさ');
+  if (t){
+    const g = t.getSettings ? t.getSettings() : {};
+    s += line('');
+    s += line('getSettings()');
+    s += line('  ' + (g.width || '-') + 'x' + (g.height || '-') +
+              '  ' + (g.frameRate ? Math.round(g.frameRate) + 'fps' : '') +
+              '  ' + (g.facingMode || ''));
+    if (t.getCapabilities){
+      let c = {};
+      try { c = t.getCapabilities() || {}; } catch (e){ void e; }
+      const rng = (r) => r ? (r.min + '〜' + r.max) : '-';
+      s += line('getCapabilities()');
+      s += line('  幅 ' + rng(c.width) + '  高さ ' + rng(c.height) +
+                '  fps ' + rng(c.frameRate));
+    }
+    s += line('');
+    s += line('レンズ ' + (at + 1) + '/' + devices.length + '  ' +
+              ((devices[at] && devices[at].label) || '名前なし'));
+  }
+  if (extra) s += line('') + line(extra);
+  info.innerHTML = s.replace(/^(画面|映像)/gm, '<b>$1</b>');
+}
+
+async function open(deviceId){
+  if (stream) stream.getTracks().forEach(k => k.stop());
+  // 出せる限りを頼む。ideal なので、無ければ端末が近いところへ落としてくれる。
+  const want = deviceId
+    ? { deviceId: { exact: deviceId } }
+    : { facingMode: { ideal: 'environment' } };
+  want.width  = { ideal: 3840 };
+  want.height = { ideal: 2160 };
+  want.frameRate = { ideal: 60 };
+  stream = await navigator.mediaDevices.getUserMedia({ video: want, audio: false });
+  video.srcObject = stream;
+  await video.play();
+  await new Promise(r => setTimeout(r, 300));   // videoWidth が入るまで待つ
+  show();
+}
+
+async function listCameras(){
+  const all = await navigator.mediaDevices.enumerateDevices();
+  devices = all.filter(d => d.kind === 'videoinput');
+  $('next').disabled = devices.length < 2;
+}
+
+$('start').addEventListener('click', async () => {
+  try {
+    await open(null);                 // 先に許可を取る。取る前は label が空になる。
+    await listCameras();
+    // いま開いているレンズが一覧のどれかを合わせておく
+    const id = stream.getVideoTracks()[0].getSettings().deviceId;
+    const i = devices.findIndex(d => d.deviceId === id);
+    if (i >= 0) at = i;
+    show();
+    gate.classList.add('gone');
+    setTimeout(() => { gate.style.display = 'none'; }, 420);
+    bar.hidden = false;
+  } catch (e){
+    info.innerHTML = '<span id="err">カメラを開けませんでした（' +
+      ((e && (e.name + ' ' + e.message)) || e) + '）</span>';
+  }
+});
+
+$('next').addEventListener('click', async () => {
+  if (devices.length < 2) return;
+  at = (at + 1) % devices.length;
+  try { await open(devices[at].deviceId); }
+  catch (e){ show('切り替え失敗（' + ((e && e.name) || e) + '）'); }
+});
+
+// 端末が言う上限をそのまま頼み直す。ideal では届かないことがあるため。
+$('max').addEventListener('click', async () => {
+  const t = stream && stream.getVideoTracks()[0];
+  if (!t || !t.getCapabilities || !t.applyConstraints) return;
+  try {
+    const c = t.getCapabilities();
+    await t.applyConstraints({ width: { ideal: c.width && c.width.max },
+                               height: { ideal: c.height && c.height.max } });
+    await new Promise(r => setTimeout(r, 300));
+    show('上限で頼み直しました');
+  } catch (e){ show('上限を頼めませんでした（' + ((e && e.name) || e) + '）'); }
+});
+
+$('hide').addEventListener('click', () => {
+  info.style.display = info.style.display === 'none' ? '' : 'none';
+  $('hide').textContent = info.style.display === 'none' ? '数字を出す' : '数字を隠す';
+});
+
+addEventListener('resize', () => show());
+</script>
+</body>
+</html>
