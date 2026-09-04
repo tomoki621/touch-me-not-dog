@@ -73,12 +73,6 @@ const ar = createStage({
       '）。この表示にはカメラの姿勢が無いので、置いても現実の一点には留まりません。';
     renderDbg();
   },
-  // 置いた点を現実へ結べたか。結べないと、端末が自己位置を直すたびに流れる。
-  // 直しようが無いので、せめて理由を出す。
-  onAnchor: (ok, why) => {
-    dbg.mode = ok ? '' : (why + ' 端末が自分の位置を測り直すたびに、少しずつ流れます。');
-    renderDbg();
-  },
   onPlaced: () => {
     acts.classList.add('on');
     tip.innerHTML = xrOn
@@ -284,8 +278,7 @@ function liveLine(){
   const f = (v) => v.toFixed(2);
   const xyz = (v) => f(v.x) + ' ' + f(v.y) + ' ' + f(v.z);
   return 'AR=' + (ar.isXR() ? '入' : '貼付') +
-         ' 置=' + (ar.isPlaced() ? '済' : '未') +
-         ' 錨=' + (ar.anchored() ? '有' : '無') + BR +
+         ' 置=' + (ar.isPlaced() ? '済' : '未') + BR +
          '像   ' + xyz(_spW) + BR +
          'カメラ ' + xyz(_cpW) + BR +
          '差   ' + f(_spW.distanceTo(_cpW)) + '  ← 歩いて、変わらない方が原因';

@@ -67,6 +67,9 @@ globalThis.document = {
 };
 globalThis.window = globalThis;
 globalThis.self = globalThis;
+// エルフは `?dbg` を見るために location を読む。無いと読み込みの時点で落ち、
+// ページごと模擬から外れる。空の問い合わせを持たせて、普通に開いた形にする。
+globalThis.location = { search: '', hash: '', href: 'https://sim/' };
 // 絵は URL 越しに読み込まれる。中身は要らないので、読めたことにして返す。
 URL.createObjectURL = () => 'blob:sim';
 URL.revokeObjectURL = () => {};
