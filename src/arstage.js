@@ -5,11 +5,15 @@
 //   置いたあとカメラが動いても、キャラはその場に居る。歩いて回り込める。
 //   使えない端末（iPhone の Safari など）では、カメラ映像に貼り付ける方へ落とす。
 //
-// 【輪はヒットテストが当たったところにしか出さない】面が見つからないときに、
-// カメラの前へ輪を出して指で決めさせる仕掛けを一度は入れた。置けないまま詰む
-// のを避けるためだったが、輪がこちらについて回る形になった。面に当たらない
-// あいだは輪を出さない。エクゾディアと同じ。置けない部屋では置けないが、
-// 現実のどこにも乗っていない輪を出すよりはいい。
+// 【輪を早く出す】ヒットテストの既定は「平面」しか当たらない。ARCore が平面を
+// 固めるには模様のある面を見せて動かす必要があり、暗い机では何秒待っても 0 件の
+// ままになる。特徴点（point）も当たりに含めると、平面が固まる前から当たり始める。
+// それでも 2.5 秒当たらなければ、カメラの前に一度だけ輪を出して指で決めてもらう。
+//
+// 【ついて回らせない】その逃げ道は一度作って失敗している。面が一瞬でも当たると
+// 解除し、しばらくして「そのときのカメラの前」へ出し直していたので、動くほど輪が
+// 寄ってきた。いまは一度出したら作り直さない（handSet）。消えるのは「置き直す」
+// だけで、面が当たっても奪い返させない。
 //
 // 【置いたら座標を書いたきり】錨（XRAnchor）で現実へ結び直す仕掛けも入れて
 // みたが、エクゾディアに揃える。置いた一度きり座標を書き、あとは触らない。
@@ -36,8 +40,13 @@ const DIST = 4.2;
 const PINCH_MIN = 10;     // これ未満は指がくっついているとみなす（px）
 const R_MAX = 1.14;       // 1フレームで許す倍率の変化。跳ねを根元で止める。
 const POS_MAX = 2.2;      // 貼り付け表示のとき、画面の外へ飛ばさない
+// 面がどうしても見つからないとき、輪をカメラの何メートル前に出すか。
+const HAND_DIST = 1.2;
+// これだけ当たらなければ、そちらへ切り替える（ミリ秒）。
+const HAND_WAIT = 2500;
 
 const _camP = new THREE.Vector3();
+const _right = new THREE.Vector3(), _up = new THREE.Vector3();
 
 // opt:
 //   gl, cam, touch      canvas / video / 指の受け皿の要素
@@ -116,6 +125,14 @@ export function createStage(opt){
   let lastHit = 0, tipState = '';
   // ヒットテストの生の結果。件数と例外を控える（-1 は投げたの意）。
   let nHits = 0, hitErr = '';
+  // 面が見つからないときの逃げ道。輪が出ないと「置く」が永久に効かず、詰む。
+  //
+  // 【一度これで失敗している】前は、面が一瞬でも当たると手置きを解除し、また
+  // しばらくして「そのときのカメラの前」へ輪を出し直していた。動くほど輪が
+  // 寄ってきて、ついて回るように見えた。いまは一度出したら置き直さない。
+  // handSet がその印で、消えるのは「置き直す」だけ。
+  let byHand = false, handSet = false;
+  const handPos = new THREE.Vector3();
   // 基準の倍率。AR は実寸なので、ここが背丈をメートルへ読み替える係数になる。
   let base = 1;
   // 倍率の幅。AR は実寸なので、机の置物から見上げる大きさまで要る。
@@ -154,8 +171,16 @@ export function createStage(opt){
       if (placed) return;
       const dx = e.clientX - dragX, dy = e.clientY - dragY;
       dragX = e.clientX; dragY = e.clientY;
-      // AR では置き場所を現実の面が持っている。指では動かさない。
-      if (xr) return;
+      if (xr){
+        // 面が当たっているあいだは指で動かさない。現実の面のほうが正しい。
+        if (!byHand) return;
+        // 面が無くて手で置くときだけ。カメラの右と上へ、動かしたぶん送る。
+        const k = 2 * HAND_DIST * Math.tan(camera.fov * Math.PI / 360) / innerHeight;
+        _right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+        _up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+        handPos.addScaledVector(_right, dx * k).addScaledVector(_up, -dy * k);
+        return;
+      }
       const k = perPx();
       stage.position.x = clampP(stage.position.x + dx * k);
       stage.position.y = clampP(stage.position.y - dy * k);
@@ -231,6 +256,7 @@ export function createStage(opt){
     // 落ちてきたときの輪が画面に貼りついたまま、カメラについて回る。
     reticle.visible = false;
     hitOK = false;
+    byHand = false; handSet = false;
     tipState = ''; lastHit = performance.now();
     stage.scale.setScalar(base);
     stage.rotation.set(0, 0, 0);
@@ -300,7 +326,16 @@ export function createStage(opt){
         renderer.xr.enabled = false;
       });
       return renderer.xr.setSession(session).then(() => session.requestReferenceSpace('viewer'));
-    }).then((viewer) => xr.requestHitTestSource({ space: viewer }))
+    }).then((viewer) => {
+      // 【輪を早く出す】既定のヒットテストは「平面」しか当たらない。ARCore が
+      // 平面を確定するには、模様のある面をしばらく見せて動かす必要があり、暗い
+      // 机では何秒待っても 0 件のままになる。特徴点（point）も当たりに含めると、
+      // 平面が固まる前の段階で当たり始める。カードのような小さくて模様のある
+      // ものに向けた瞬間に輪が出るのはこちら。
+      // entityTypes を解さない端末では投げるので、そのときは既定で頼み直す。
+      return xr.requestHitTestSource({ space: viewer, entityTypes: ['plane', 'point'] })
+        .catch(() => xr.requestHitTestSource({ space: viewer }));
+    })
       .then((src) => { hitSource = src; lastHit = performance.now(); begin(); })
       .catch(xrFailed);
   }
@@ -389,31 +424,40 @@ export function createStage(opt){
       hitErr = '';
     } catch (e){ pose = null; nHits = -1; hitErr = (e && (e.name || e.message)) || String(e); }
 
-    // 当たった面の上にだけ輪を出す。当たらないあいだは出さない。カメラの前に
-    // 逃がすと、現実のどこにも乗っていない輪がこちらについて回る。
-    if (pose){
+    // 当たった面の上に輪を出す。一度でも手で置く方へ落ちたら、面が当たっても
+    // 奪い返させない（奪い返すと、見失うたびに輪を出し直して寄ってくる）。
+    if (pose && !byHand){
       reticle.matrix.fromArray(pose.transform.matrix);
       reticle.visible = true;
       hitOK = true;
       lastHit = performance.now();
       say('aim', '床や机に輪を合わせて「置く」<br>2本指、またはボタンで大きさと向き');
-    } else {
-      reticle.visible = false;
-      hitOK = false;
-      // 面が返ってこない状態が続いたら、そう言う。黙って輪が出ないままだと、
-      // AR に入れていないのか面が見つからないのかが区別できない。
-      // 「0件」と「投げた」と「当たったのに姿勢が無い」を書き分ける。
-      if (performance.now() - lastHit > 2500){
-        // 狙う先は画面のど真ん中。十字に何を重ねているかで結果が変わる。
-        const sec = Math.round((performance.now() - lastHit) / 1000);
-        const what = hitErr ? '例外 ' + hitErr
-                   : nHits > 0 ? '当たり ' + nHits + '件・姿勢なし'
-                   : '当たり 0件';
-        say('nohit' + what,
-            'AR には入っています。まだ面を見つけられません（' + what + '／' + sec + '秒）<br>'
-          + '<b>画面の十字をカードや模様のある面に重ねて</b>、ゆっくり動かしてください');
-      }
+      return;
     }
+    // 見つからないまま待たせない。少し待って駄目なら、カメラの前に一度だけ
+    // 輪を出し、そこから先は指で決めてもらう。出す位置は二度と作り直さない
+    // ので、こちらについて回ることはない。
+    if (byHand || performance.now() - lastHit > HAND_WAIT){
+      if (!handSet){
+        handSet = true; byHand = true;
+        handPos.set(0, -0.35, -HAND_DIST).applyMatrix4(camera.matrixWorld);
+        say('byhand', '面が見つからないので、輪をカメラの前に出しました<br>'
+                    + '1本指で動かして「置く」');
+      }
+      reticle.matrix.makeTranslation(handPos.x, handPos.y, handPos.z);
+      reticle.visible = true;
+      hitOK = true;
+      return;
+    }
+    // まだ探している途中（HAND_WAIT に届いていない）。輪は出さない。
+    reticle.visible = false;
+    hitOK = false;
+    // 0件は待てば輪が出るので黙る。例外だけは黙らない。投げているなら、待っても
+    // 直らないし、原因もここにしか出ない。
+    if (hitErr)
+      say('hiterr', 'ヒットテストが例外を返しています（' + hitErr + '）<br>'
+                  + 'このまま輪はカメラの前に出します');
+    void nHits;
   }
 
   // 案内の差し替え。同じ文を毎フレーム書き込まない（読んでいる途中で点滅する）。
