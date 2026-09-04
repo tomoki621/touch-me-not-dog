@@ -26,7 +26,10 @@ const uArg = /^u([0-9.]+)$/.exec(process.argv[3] || '');
 const p = uArg
   ? poseWeights({ swing: 1 - parseFloat(uArg[1]), guard: +(process.argv[4] ?? 0) })
   : { g: +(process.argv[3] ?? 1), w: +(process.argv[4] ?? 0),
-      c: +(process.argv[5] ?? 0), m: +(process.argv[6] ?? 0) };
+      c: +(process.argv[5] ?? 0), m: +(process.argv[6] ?? 0),
+      // 両手持ちは守備以外では常に効く。ここを落とすと、直に重みを並べたときだけ
+      // 左手が柄から離れた絵になり、アプリと食い違う。
+      two: 1 - +(process.argv[3] ?? 1) };
 // 'table' を渡すと、絵は描かずに「守備の重みごとの、沈める前の最下点」だけを並べる。
 // src/elfpose.js の KNEEL_LOW に貼る表はこれで作る。
 const TABLE = process.argv[2] === 'table';
