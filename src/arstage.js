@@ -39,6 +39,15 @@ const POS_MAX = 2.2;      // 貼り付け表示のとき、画面の外へ飛ば
 
 const _camP = new THREE.Vector3();
 
+// ?dbg を付けて開いたときだけ、生のカメラ映像へ触れる機能を「任意で」頼む。
+// 狙いは映像を使うことではなく、XRView.camera の width/height を読むこと。ここが
+// 「WebXR が渡してくれるカメラテクスチャの実解像度」で、実写のボケが
+//   ・元の映像が低い（640x480 級）        → Web の標準機能では詰み
+//   ・合成の途中で落ちている（1920x1080 級）→ 自前で背景を描けば直る見込み
+// のどちらなのかを、推測ではなく数字で決められる。
+// 常時頼むと権限の確認が毎回出るので、調べるときだけにする。
+const WANT_CAM = /(^|[?&])dbg(=|&|$)/.test(location.search);
+
 // opt:
 //   gl, cam, touch      canvas / video / 指の受け皿の要素
 //   ov                  dom-overlay に渡す入れ物
@@ -263,7 +272,7 @@ export function createStage(opt){
     tapme.textContent = 'AR を起動しています…';
     navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test', 'local'],
-      optionalFeatures: ['dom-overlay'],
+      optionalFeatures: WANT_CAM ? ['dom-overlay', 'camera-access'] : ['dom-overlay'],
       domOverlay: { root: opt.ov },
     }).then((session) => {
       xr = session;
@@ -354,7 +363,33 @@ export function createStage(opt){
   // 置いたあとは探さない。探し続けると、輪と一緒に本体まで動かしたくなる。
   // 置いたあとは何もしない。座標は place() で一度書いたきりで、以後は触らない。
   // 触るとしたら錨だが、それは外した（先頭の但し書き）。エクゾディアと同じ。
+  // 画質の出どころを数字で出す。値は変わらないので一度拾えば足りる。
+  let camNote = '';
+  function measure(frame){
+    if (camNote || !frame) return;
+    const parts = [];
+    const gl = renderer.getContext();
+    const bl = xr && xr.renderState && xr.renderState.baseLayer;
+    if (bl) parts.push('XRの層 ' + bl.framebufferWidth + 'x' + bl.framebufferHeight);
+    parts.push('画面 ' + Math.round(innerWidth * devicePixelRatio) +
+               'x' + Math.round(innerHeight * devicePixelRatio) +
+               '(dpr' + devicePixelRatio + ')');
+    if (!WANT_CAM){ camNote = parts.join(' / '); void gl; return; }
+    // 実写の解像度。view.camera が来るのは camera-access が通ったときだけ。
+    let got = false;
+    try {
+      const space = renderer.xr.getReferenceSpace();
+      const pose = space && frame.getViewerPose(space);
+      for (const v of (pose ? pose.views : [])){
+        if (v.camera){ parts.push('実写 ' + v.camera.width + 'x' + v.camera.height); got = true; }
+      }
+    } catch (e){ parts.push('実写 読めず(' + ((e && e.name) || e) + ')'); got = true; }
+    if (!got) parts.push('実写 camera-access が通らなかった');
+    camNote = parts.join(' / ');
+  }
+
   function update(frame){
+    measure(frame);
     if (!frame || placed) return;
     const space = renderer.xr.getReferenceSpace();
     if (!space) return;
@@ -387,6 +422,7 @@ export function createStage(opt){
     isXR: () => !!xr,
     flatWhy: () => flatWhy,
     isPlaced: () => placed,
+    camNote: () => camNote,
     video: () => (xr ? null : opt.cam),
   };
 }

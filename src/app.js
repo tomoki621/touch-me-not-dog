@@ -450,7 +450,8 @@ function liveLine(){
          ' 置=' + (ar.isPlaced() ? '済' : '未') + BR +
          '像   ' + xyz(_spW) + BR +
          'カメラ ' + xyz(_cpW) + BR +
-         '差   ' + f(_spW.distanceTo(_cpW)) + '  ← 歩いて、変わらない方が原因';
+         '差   ' + f(_spW.distanceTo(_cpW)) + '  ← 歩いて、変わらない方が原因' +
+         (ar.camNote() ? BR + ar.camNote() : '');
 }
 
 function tick(time, frame){
