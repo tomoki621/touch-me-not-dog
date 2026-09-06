@@ -53,18 +53,18 @@ const _camP = new THREE.Vector3();
 // 常時頼むと権限の確認が毎回出るので、調べるときだけにする。
 const WANT_CAM = /(^|[?&])cam(=|&|$)/.test(location.search);
 
-// ?flat を付けると、WebXR が使える端末でも貼り付け表示で開く。
+// 既定は貼り付け表示。AR は ?ar を付けたときだけ。
 //
-// 【選べないと困る】AR のほうが「その場に居る」感じは出る。でも背景の実写は
-// ARCore が作っていて、追跡に足りる解像度で回した映像を画面いっぱいに引き伸ばす。
-// ページから上げる手は無い。**撮ったものを見ると、キャラだけ鮮明で机も手も甘い。**
-// 3D の側をいくら詰めても、そこは変わらない。
+// 【AR を既定から降ろした理由】AR のほうが「その場に居る」感じは出る。でも背景の
+// 実写は ARCore が作っていて、追跡に足りる解像度で回した映像を画面いっぱいに
+// 引き伸ばす。ページから上げる手は無い。**実機で撮ると、キャラだけ鮮明で机も手も
+// カードも甘い。** 3D の側をどれだけ詰めてもそこは変わらない。
 //
-// 撮るのが目的のときは、追跡を捨てて実写を取るほうが良い絵になる。貼り付け表示は
-// getUserMedia なので出せる限りの解像度を頼めて、実測 2160x3840 まで出た端末が
-// ある。引き換えに、置いたキャラは画面に貼りつくので歩いて回り込めない。
-// どちらが要るかは撮る人にしか決められないので、選べるようにしておく。
-const WANT_FLAT = /(^|[?&])flat(=|&|$)/.test(location.search);
+// 貼り付け表示は getUserMedia なので、出せる限りの解像度を頼める（実測
+// 2160x3840）。背景もキャラも鮮明に出る。引き換えに追跡が無く、置いたキャラは
+// 画面に貼りつくので歩いて回り込めない。**綺麗に出て 3D が乗ればいい**なら、
+// そちらが正しい既定。AR は残してあるので ?ar でいつでも戻せる。
+const WANT_AR = /(^|[?&])ar(=|&|$)/.test(location.search);
 
 // opt:
 //   gl, cam, touch      canvas / video / 指の受け皿の要素
@@ -397,17 +397,15 @@ export function createStage(opt){
   function boot(){
     if (gate.dataset.busy) return;
     gate.dataset.busy = '1';
+    // 既定はこちら。理由は書かない。落ちてきたのではなく、選んだ道なので、
+    // flatWhy は空のままにする（空でないときだけページが断りを出す）。
+    if (!WANT_AR){ startFlat(); return; }
     tapme.textContent = '確かめています…';
     const ask = navigator.xr && navigator.xr.isSessionSupported
       ? navigator.xr.isSessionSupported('immersive-ar').catch(() => false)
       : Promise.resolve(false);
     ask.then((ok) => {
-      if (ok && !WANT_FLAT){ startXR(); return; }
-      if (ok){
-        flatWhy = '?flat が付いている（追跡を捨てて、実写を鮮明に撮るため）';
-        startFlat();
-        return;
-      }
+      if (ok){ startXR(); return; }
       flatWhy = navigator.xr
         ? 'この端末の browser に immersive-ar が無い'
         : 'この browser に WebXR が無い';

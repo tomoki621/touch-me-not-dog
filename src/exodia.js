@@ -1249,9 +1249,16 @@ function startFlat(){
     .catch((err) => fail(err, 'はじめられませんでした。カメラを許可してから開き直してください'));
 }
 
+// 既定は貼り付け表示。AR は ?ar を付けたときだけ（3ページとも同じ扱い）。
+// AR の背景の実写は ARCore が作っていて、ページからは解像度を上げられない。
+// 貼り付け表示は getUserMedia なので出せる限りを頼める。綺麗に出て 3D が乗れば
+// いいなら、そちらが正しい既定。
+const WANT_AR = /(^|[?&])ar(=|&|$)/.test(location.search);
+
 function boot(){
   if (gate.dataset.busy) return;
   gate.dataset.busy = '1';
+  if (!WANT_AR){ startFlat(); return; }
   tapme.textContent = '確かめています…';
   const ask = navigator.xr && navigator.xr.isSessionSupported
     ? navigator.xr.isSessionSupported('immersive-ar').catch(() => false)
