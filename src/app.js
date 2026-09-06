@@ -68,9 +68,10 @@ const ar = createStage({
     // 先に回し始めても three は XR へ繋ぎ直してくれるが、実績のある順に揃える。
     renderer.setAnimationLoop(tick);
     xrOn = isXR;
-    tip.innerHTML = isXR
-      ? '床や机に輪を合わせて「置く」<br>2本指、またはボタンで大きさと向き'
-      : '1本指で位置、2本指で大きさと向き<br>置いたら「置く」';
+    // 模型がまだ来ていないなら、案内より先に「読み込んでいます」を出しておく。
+    // ここで上書きすると、待っている最中だけ何も知らせない元の形に戻る。
+    if (mainIn) tip.innerHTML = tipRest();
+    else loadNote();
     // AR から落ちたときだけ、その理由を出す。この表示には現実の面が無いので
     // 置き場所の輪はそもそも出ない。出ないのが正しいのか壊れているのかは、
     // 落ちた理由まで出さないと区別がつかない。
@@ -188,11 +189,40 @@ function fit(root, targetH, anchorY){
   root.position.set(-center.x*k, -(box.min.y + size.y*anchorY)*k, -center.z*k);
 }
 
+// ---------------------------------------------------------------- 読み込みの断り
+// 【ここが黙っていた】模型が届くまで、画面には実写しか映らない。「置く」も
+// ready を見て黙って帰るので、押しても何も起きない。そのあいだ何ひとつ
+// 知らせていなかったので、待つ側から「出ない」のか「まだ来ていない」のかを
+// 区別する手立てが無かった。絵を 2048 に上げて一式 4.5MB になったぶん、待ちは
+// 伸びている。届くまで、下の案内の行でそう言う。
+//
+// 数えるのは本体ひとつぶんだけ。剣や盾が少し遅れても、居ないのはキャラで、
+// 「ルイーズが出ない」と言われるのはそのとき。副物まで数に入れると、そちらが
+// 一つ詰まっただけで案内が永久に居座る。
+const MAIN = 'rouise.glb';
+let mainGot = 0, mainAll = 0, mainIn = false;
+function tipRest(){
+  return xrOn ? '床や机に輪を合わせて「置く」<br>2本指、またはボタンで大きさと向き'
+              : '1本指で位置、2本指で大きさと向き<br>置いたら「置く」';
+}
+function loadNote(){
+  if (mainIn) return;
+  // 全体の大きさを教えない配信もある。そのときは割合を出さずに待たせる。
+  tip.textContent = 'ルイーズを読み込んでいます…' +
+    (mainAll > 0 ? ' ' + Math.min(99, Math.floor(mainGot / mainAll * 100)) + '%' : '');
+}
+function loadEnd(){
+  if (mainIn) return;
+  mainIn = true;
+  tip.innerHTML = tipRest();
+}
+
 function load(url, onDone){
   const name = url.split('/').pop();
   dbg.models[name] = '取得中';
   renderDbg();
   // モデルも GitHub Pages に10分キャッシュされる。作り直しても届かないので版番号を付ける。
+  if (name === MAIN) loadNote();
   loader.load(url + '?h=' + __GLBV__, (g) => {
     g.scene.traverse(o => {
       if (o.isMesh){ o.castShadow = true; o.frustumCulled = false; }
@@ -207,9 +237,16 @@ function load(url, onDone){
     });
     try { onDone(g.scene); dbg.models[name] = 'OK'; }
     catch(e){ dbg.models[name] = '配置失敗 ' + (e.message || e); }
+    if (name === MAIN) loadEnd();
     renderDbg();
-  }, undefined, (err) => {
+  }, (e) => {
+    if (name !== MAIN || mainIn) return;
+    mainGot = e.loaded || 0; mainAll = e.total || 0;
+    loadNote();
+  }, (err) => {
     dbg.models[name] = '失敗 ' + ((err && (err.message || err.type)) || '');
+    // 届かなかったことは dbg が出す。案内は元へ戻して、押せる物は押させる。
+    if (name === MAIN) loadEnd();
     renderDbg();
   });
 }
@@ -387,7 +424,9 @@ shieldBtn.addEventListener('pointerdown', e => { e.preventDefault(); guardOn(); 
 
 // 置く／置き直す
 $('bPlace').addEventListener('click', () => {
-  if (!ready) return;
+  // 模型が来ていないうちは置けない。前は黙って帰っていたので、押しても
+  // 何も起きず、壊れているのか待てばいいのかが分からなかった。そう言う。
+  if (!ready){ loadNote(); return; }
   if (!ar.tryPlace()) return;
   spawnT = 0;                       // 置いた瞬間だけ輪を出す
 });

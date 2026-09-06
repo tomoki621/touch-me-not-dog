@@ -527,7 +527,8 @@ export function createStage(opt){
     let aa = '?';
     try { aa = renderer.getContext().getContextAttributes().antialias ? '有' : '無'; }
     catch (e){ void e; }
-    return '版 ' + __GLBV__ + ' / 刻み ' + renderer.getPixelRatio() + ' / MSAA ' + aa;
+    return '版 ' + __GLBV__ + ' / 刻み ' + renderer.getPixelRatio() + ' / MSAA ' + aa +
+           ' / 倍率 ' + stage.scale.x.toFixed(3) + ' / 見え ' + (stage.visible ? '有' : '無');
   }
 
   return {

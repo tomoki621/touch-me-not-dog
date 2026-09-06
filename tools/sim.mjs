@@ -42,8 +42,11 @@ const el = (id) => {
     els.set(id, c);
     return c;
   }
+  // textContent と innerHTML は別々の入れ物ではない。本物はどちらかを書くと
+  // もう一方も入れ替わる。別に持っていたせいで、「案内を書き換えたのに古い
+  // 文字が残って見える」という、本物では起きない読み方をしていた。
   const o = {
-    id, textContent: '', innerHTML: '', disabled: false, value: '',
+    id, disabled: false, value: '',
     style: {}, dataset: {}, srcObject: null,
     classList: { s: new Set(),
       add(c){ this.s.add(c); }, remove(c){ this.s.delete(c); },
@@ -55,6 +58,14 @@ const el = (id) => {
     getContext(){ return null; },
     fire(t, e){ for (const f of (this.h[t] || [])) f(e || { preventDefault(){}, clientX: 0, clientY: 0, pointerId: 1 }); },
   };
+  let _txt = '';
+  Object.defineProperty(o, 'textContent', {
+    get(){ return _txt; },
+    set(v){ _txt = String(v); }, enumerable: true });
+  Object.defineProperty(o, 'innerHTML', {
+    // 印を落として素の文字にする。中身を読む側が同じものを見られればよい。
+    get(){ return _txt; },
+    set(v){ _txt = String(v).replace(/<[^>]*>/g, ''); }, enumerable: true });
   els.set(id, o);
   return o;
 };
@@ -71,7 +82,11 @@ globalThis.self = globalThis;
 // ページごと模擬から外れる。空の問い合わせを持たせて、普通に開いた形にする。
 globalThis.location = { search: '', hash: '', href: 'https://sim/' };
 // 絵は URL 越しに読み込まれる。中身は要らないので、読めたことにして返す。
-URL.createObjectURL = () => 'blob:sim';
+// 毎回ちがう URL を返す。同じ文字列を返していたら、模型の中の絵が全部
+// 同じ道になり、三の読み込みが取り違えて最後の1つが永遠に終わらなかった。
+// 「3つ目の模型だけ届かない」という、本物では起きない詰まり方をしていた。
+let _blobN = 0;
+URL.createObjectURL = () => 'blob:sim/' + (++_blobN);
 URL.revokeObjectURL = () => {};
 document.createElementNS = (ns, tag) => {
   if (tag !== 'img') return el('ns:' + tag);
