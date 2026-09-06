@@ -341,12 +341,49 @@ const _camW = new THREE.Vector3();
 const _spW = new THREE.Vector3(), _cpW = new THREE.Vector3();
 
 // いま何がどこに居るか。歩いて見比べるための数。
+// 描かれているのか、描かれていないのか。数字が全部正しいのに姿が無いとき、
+// ここを見ないと先へ進めない。
+//   三角 0        場面へ渡っていない（骨に非数が混ざるとスキンは丸ごと消える）
+//   三角が出て姿が無い  渡ってはいる。場所か材質の話。
+//   箱          実際にワールドのどこを占めているか。カメラは原点で -Z を見ている。
+const _bb = new THREE.Box3(), _b1 = new THREE.Box3();
+const _bc = new THREE.Vector3(), _bs = new THREE.Vector3();
+function drawLine(){
+  const r = renderer.info.render;
+  let box = '未', n = 0, bad = '';
+  try {
+    const rootN = chara.children[0] || null;
+    _bb.makeEmpty();
+    chara.traverse(o => {
+      if (!o.isMesh || !o.geometry) return;
+      n++;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      _b1.copy(o.geometry.boundingBox);
+      // スキン付きの頂点は骨の空間に載っていて、メッシュ節の行列は効かない。
+      // 実際に出る場所は模型の根の行列で決まるので、そちらを掛ける。
+      _b1.applyMatrix4(o.isSkinnedMesh && rootN ? rootN.matrixWorld : o.matrixWorld);
+      _bb.union(_b1);
+    });
+    if (!_bb.isEmpty()){
+      _bb.getCenter(_bc); _bb.getSize(_bs);
+      box = '中' + _bc.toArray().map(v => v.toFixed(2)).join(',') +
+            ' 大' + _bs.toArray().map(v => v.toFixed(2)).join(',');
+    }
+  } catch(e){ box = '測れず ' + (e.message || e); }
+  for (const k in bones){
+    const q = bones[k].quaternion;
+    if (!(Number.isFinite(q.x) && Number.isFinite(q.y) && Number.isFinite(q.z) && Number.isFinite(q.w))){ bad = k; break; }
+  }
+  return '描画 三角' + (r.triangles || 0) + ' 回' + (r.calls || 0) +
+         ' 面' + n + (bad ? ' 骨NaN=' + bad : '') + BR + '箱 ' + box;
+}
+
 function liveLine(){
   stage.getWorldPosition(_spW);
   _cpW.setFromMatrixPosition(camera.matrixWorld);
   const f = (v) => v.toFixed(2);
   const xyz = (v) => f(v.x) + ' ' + f(v.y) + ' ' + f(v.z);
-  return ar.buildNote() + BR +
+  return ar.buildNote() + BR + drawLine() + BR +
          'AR=' + (ar.isXR() ? '入' : '貼付') +
          ' 置=' + (ar.isPlaced() ? '済' : '未') + BR +
          '像   ' + xyz(_spW) + BR +
