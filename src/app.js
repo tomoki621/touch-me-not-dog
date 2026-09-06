@@ -39,8 +39,9 @@ function renderDbg(){
 }
 
 // ---------------------------------------------------------------- 寸法
-// Meshy は書き出しをどれも同じ箱に正規化するので、3体とも高さ 1.9 で出てくる。
-// 背丈と握り位置はこちらで組み直す。すべて「キャラの背丈＝1.9」基準。
+// 模型の書き出しの背丈はどこも当てにならない（Meshy は高さ 1.9 に正規化し、
+// 本体を差し替えた Tripo は 0.976 で出てきた）。読み込んだ側で fit() が背丈を
+// 揃えるので、剣と盾の大きさと握り位置は「キャラの背丈＝1.9」基準で書く。
 const BODY_H = 1.9;
 const AR_H   = 0.25;      // AR は実寸（メートル）。机の上の置物として。
 // 頭の骨は、渡した値の正が「下向き」になる。骨ごとに素の姿勢の向きが違うので、
@@ -52,7 +53,8 @@ const SWORD_ROLL = Math.PI/2;   // 刀身の軸まわりのひねり。平たい
 const SHIELD_LEN = 1.25;
 const SWORD_GRIP = 0.20;      // 柄の中ほどを握る
 const SHIELD_PUSH = 0.18;     // 盾を逃がすのではなく、守備で腕を前へ出して避ける
-const LEAN_FIX = 0.060;       // モデル自体が3.4度うしろに傾いているのを起こす
+const GRIP_Y   = 0.62;        // 手の骨から拳まで。前腕の長さに対する割合。
+const LEAN_FIX = 0.0;         // 模型の傾きを起こす量。今の模型は起きているので 0。
 const FOOT_SINK = -0.05;      // 足を面に少し埋める。ぴったり0だと浮いて見える。
 
 // ---------------------------------------------------------------- 場面
@@ -145,7 +147,7 @@ let rigged = false, ready = false;
 const loader = new GLTFLoader();
 
 // スキン付きメッシュの頂点はバインド行列で既に骨の空間に載っている。そこへ
-// メッシュ側のワールド行列を重ねて測ると桁が狂う（このモデルは Armature に
+// メッシュ側のワールド行列を重ねて測ると桁が狂う（前の模型は Armature に
 // 0.01 倍が掛かっていて、100分の1の箱が返っていた）。スキン付きは素の箱を使う。
 const _b3 = new THREE.Box3();
 function modelBox(root){
@@ -220,12 +222,19 @@ load('models/rouise.glb', (root) => {
   if (bones.RightHand){ bones.RightHand.getWorldScale(ws); swordPivot.scale.setScalar(SWORD_LEN/boneS(ws.x)); }
   if (bones.LeftHand){  bones.LeftHand.getWorldScale(ws);  shieldPivot.scale.setScalar(SHIELD_LEN/boneS(ws.x)); }
 
-  // 手の骨のローカル座標。Armature の 0.01 倍のせいで尺度が約100倍になるので、
-  // 実行時に変換せず、手元で算出した値をそのまま置く。
-  // この系の向き： +X = キャラの左、+Y = 下、+Z = 後ろ（右手の骨で実測）。
-  // 剣は拳の外接箱の中心へ。重心より少し下がった、握りの穴のあたり。
-  if (bones.RightHand) swordPivot.position.set(2.73, 14.18, -0.30);
-  // 盾は通常時の見え方が正しかったので、骨の原点のままにする。
+  // 骨は拳ではなく手首にある。そのまま置くと柄が手首に刺さって見えるので、
+  // 前腕から手へ伸びる長さを実行時に測り、その割合だけ骨の向きへ送って拳の中へ
+  // 置く（エルフと同じ）。前は手元で算出した値を直に置いていたが、あれは
+  // Armature に 0.01 倍が掛かった模型の系で、尺度が約100倍あった。模型を
+  // 差し替えると桁ごとずれるので、数字で決め打ちをやめて測って決める。
+  const _fp = new THREE.Vector3(), _hp = new THREE.Vector3();
+  if (bones.RightHand && bones.RightForeArm){
+    bones.RightHand.getWorldScale(ws);
+    bones.RightForeArm.getWorldPosition(_fp);
+    bones.RightHand.getWorldPosition(_hp);
+    swordPivot.position.set(0, _hp.distanceTo(_fp) * GRIP_Y / (ws.y || 1), 0);
+  }
+  // 盾は骨の原点のまま。面の向きと逃がしは shield.glb 側で付けてある。
   if (bones.LeftHand)  shieldPivot.position.set(0, 0, 0);
   ready = true;
 });
