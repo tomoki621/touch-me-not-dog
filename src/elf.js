@@ -303,7 +303,8 @@ function liveLine(){
   _cpW.setFromMatrixPosition(camera.matrixWorld);
   const f = (v) => v.toFixed(2);
   const xyz = (v) => f(v.x) + ' ' + f(v.y) + ' ' + f(v.z);
-  return 'AR=' + (ar.isXR() ? '入' : '貼付') +
+  return ar.buildNote() + BR +
+         'AR=' + (ar.isXR() ? '入' : '貼付') +
          ' 置=' + (ar.isPlaced() ? '済' : '未') + BR +
          '像   ' + xyz(_spW) + BR +
          'カメラ ' + xyz(_cpW) + BR +

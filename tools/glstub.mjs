@@ -27,7 +27,13 @@ export class WebGLRenderer {
   setPixelRatio(){}
   setSize(){}
   setClearColor(){}
-  getContext(){ return null; }
+  // 画面が無いので実体は無いが、形は返す。ここを null にしていたせいで、
+  // 「context が答えた値」を読む行が模擬でだけ落ちた。
+  getContext(){
+    return { drawingBufferWidth: 8, drawingBufferHeight: 8,
+             getContextAttributes: () => ({ antialias: true }) };
+  }
+  getPixelRatio(){ return 1; }
   // 実際に塗らない。ここで見たいのは絵ではなく、例外が出ないことなので。
   render(){ this.frames++; }
   setAnimationLoop(fn){ this.loop = fn; }

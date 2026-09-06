@@ -458,8 +458,23 @@ export function createStage(opt){
     }
   }
 
+  // いま何版が動いているかを一目で出す。「直したのに変わらない」の大半は、
+  // 直った物が届いていないだけで、そこを疑うのに毎回 URL とキャッシュを
+  // 手で辿ることになる。版番号は配る模型の中身から作って束ねる時に埋めるので、
+  // ここが変わっていれば JS も模型も入れ替わっている。
+  //
+  // 刻みと MSAA は、頼んだ値ではなく context が答えた値を出す。browser は断れる
+  // ので、「立てたのに効いていない」と「そもそも届いていない」は別の話。
+  function buildNote(){
+    let aa = '?';
+    try { aa = renderer.getContext().getContextAttributes().antialias ? '有' : '無'; }
+    catch (e){ void e; }
+    return '版 ' + __GLBV__ + ' / 刻み ' + renderer.getPixelRatio() + ' / MSAA ' + aa;
+  }
+
   return {
     renderer, scene, camera, stage, reticle,
+    buildNote,
     update, place, home, tryPlace, boot,
     isXR: () => !!xr,
     flatWhy: () => flatWhy,
