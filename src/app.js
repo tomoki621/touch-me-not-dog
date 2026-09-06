@@ -123,10 +123,17 @@ stage.add(new THREE.HemisphereLight(0xcfd8ff, 0x4a3a5a, 1.0));
 const key = new THREE.DirectionalLight(0xfff6e8, 1.5);
 key.position.set(1.6, 3.0, 1.8);
 key.castShadow = true;
-key.shadow.mapSize.set(1024, 1024);
+// 影の板の細かさ。1024 を ±2.5 の箱へ広げていたので、1単位あたり 205 画素、
+// 背丈 1.9 のキャラに 390 画素ぶんしか割り当たらず、輪郭がぎざぎざのまま机に
+// 落ちていた。板を倍にし、箱も詰める（512 画素/単位。2.5倍細かくなる）。
+//
+// 詰めすぎない。箱は光の空間で効くので、要るのはキャラそのものではなく
+// 「一番遠くへ伸びる影」の分。頭上へ振り上げた剣先は原点から光の向きに直交して
+// 1.75 ほど離れる。ここを 1.6 にすると、その剣先の影だけが切れて消える。
+key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.near = 0.5; key.shadow.camera.far = 12;
-key.shadow.camera.left = -2.5; key.shadow.camera.right = 2.5;
-key.shadow.camera.top = 2.5; key.shadow.camera.bottom = -2.5;
+key.shadow.camera.left = -2.0; key.shadow.camera.right = 2.0;
+key.shadow.camera.top = 2.0; key.shadow.camera.bottom = -2.0;
 key.shadow.bias = -0.002;
 stage.add(key);
 stage.add(key.target);
@@ -143,6 +150,9 @@ chara.add(swordPivot, shieldPivot);
 const bones = {};
 const rest  = {};                                 // 素の姿勢。ここからの差分で動かす。
 let rigged = false, ready = false;
+
+// 絵の異方性の上限。端末が許すだけ使う（今どきはたいてい 16）。
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
 
 const loader = new GLTFLoader();
 
@@ -182,6 +192,14 @@ function load(url, onDone){
   loader.load(url + '?h=' + __GLBV__, (g) => {
     g.scene.traverse(o => {
       if (o.isMesh){ o.castShadow = true; o.frustumCulled = false; }
+      // 貼ってある絵を、斜めから見たときもぼかさない。ミップマップは真上から
+      // 見た細かさで選ばれるので、寝かせた面（机に近い鎧や刃の腹）は実際より
+      // 粗い段が選ばれて、そこだけ溶ける。異方性を上げると段の選び方が向きを
+      // 見るようになる。焼き直しは要らず、値を入れるだけで効く。
+      const m = o.material;
+      for (const t of [m && m.map, m && m.emissiveMap]){
+        if (t && t.anisotropy < maxAniso){ t.anisotropy = maxAniso; t.needsUpdate = true; }
+      }
     });
     try { onDone(g.scene); dbg.models[name] = 'OK'; }
     catch(e){ dbg.models[name] = '配置失敗 ' + (e.message || e); }

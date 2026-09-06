@@ -65,13 +65,21 @@ export function createStage(opt){
   const $ = (id) => document.getElementById(id);
   const { gate, note, tapme, tip } = opt;
 
-  // antialias はモバイルでは高くつく。輪郭は影と背景が隠すので外す。
+  // antialias は前は切っていた。「輪郭は影と背景が隠す」と書いてあったが、隠さない。
+  // 背景は実写で、そこだけは端末の素の解像度で鮮明に写っている。その上に載る
+  // キャラの輪郭だけが階段になるので、**合成物だと分かる一番の目印**がここだった。
+  // 場面は3万三角形と光ふたつ。今の端末のタイル型 GPU で 4x の MSAA は安い。
+  //
+  // AR でも効く。three 0.149 は投影レイヤーを作るとき samples を
+  // 「context の antialias なら 4」で決めるので、ここを立てると XR の層も
+  // 4x で焼かれる（baseLayer に落ちる端末では XRWebGLLayer の antialias に渡る）。
   const renderer = new THREE.WebGLRenderer({
-    canvas: opt.gl, alpha: true, antialias: false, powerPreference: 'high-performance' });
-  // 画素の刻み。1.5 で頭打ちにしていたが、いまの端末はたいてい 3 なので、
-  // 実写のカメラ映像の隣に半分の解像度で描くことになり、3D だけがぼやけて見えた。
-  // 場面は2万三角形と光ひとつで、塗る画素を倍にしても足りる。
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    canvas: opt.gl, alpha: true, antialias: true, powerPreference: 'high-performance' });
+  // 画素の刻み。1.5 → 2 と上げてきたが、いまの端末はたいてい 3 で、まだ 2/3 の
+  // 解像度で描いていた。実写を 4K で開いておいて 3D だけ甘い、が残る理由がここ。
+  // これが効くのは貼り付け表示だけ（AR の層の大きさは XR 側が決める）で、
+  // 塗るのは小さな置物と影板だけなので、素の刻みまで上げてよい。
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 3));
   // three は 0.149。outputColorSpace / texture.colorSpace が入るのは 0.152 から。
   // この版に書いても新しい属性が生えるだけで誰も読まない。線形のまま画面へ行き、
   // 中間調が軒並み沈む。この版では encoding 側で指定するのが正しい。

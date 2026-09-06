@@ -12,6 +12,8 @@ export class WebGLRenderer {
     this.outputEncoding = 0;
     this.shadowMap = { enabled: false };
     this.info = { render: {} };
+    // 端末の限界を聞く口。異方性の上限のように、読めないと組み立てが止まる。
+    this.capabilities = { isWebGL2: true, getMaxAnisotropy: () => 16 };
     this.frames = 0;
     this.loop = null;
     this.xr = {
