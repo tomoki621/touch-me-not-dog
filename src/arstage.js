@@ -53,6 +53,19 @@ const _camP = new THREE.Vector3();
 // 常時頼むと権限の確認が毎回出るので、調べるときだけにする。
 const WANT_CAM = /(^|[?&])cam(=|&|$)/.test(location.search);
 
+// ?flat を付けると、WebXR が使える端末でも貼り付け表示で開く。
+//
+// 【選べないと困る】AR のほうが「その場に居る」感じは出る。でも背景の実写は
+// ARCore が作っていて、追跡に足りる解像度で回した映像を画面いっぱいに引き伸ばす。
+// ページから上げる手は無い。**撮ったものを見ると、キャラだけ鮮明で机も手も甘い。**
+// 3D の側をいくら詰めても、そこは変わらない。
+//
+// 撮るのが目的のときは、追跡を捨てて実写を取るほうが良い絵になる。貼り付け表示は
+// getUserMedia なので出せる限りの解像度を頼めて、実測 2160x3840 まで出た端末が
+// ある。引き換えに、置いたキャラは画面に貼りつくので歩いて回り込めない。
+// どちらが要るかは撮る人にしか決められないので、選べるようにしておく。
+const WANT_FLAT = /(^|[?&])flat(=|&|$)/.test(location.search);
+
 // opt:
 //   gl, cam, touch      canvas / video / 指の受け皿の要素
 //   ov                  dom-overlay に渡す入れ物
@@ -295,10 +308,19 @@ export function createStage(opt){
       // 対応していない端末はそこで落ちる（落ちるのは自分で書いた行ではない）。
       // 床の高さは要らない。置く場所はヒットテストが教えてくれる。
       renderer.xr.setReferenceSpaceType('local');
-      // 3D の層は等倍で焼く。0.8 に落として軽くしていたが、パススルーの実写は
-      // 等倍のままなので、キャラだけが甘くなって浮いて見えた。軽さより、
-      // 実写と同じ細かさで乗っていることを取る。
-      renderer.xr.setFramebufferScaleFactor(1.0);
+      // 3D の層の大きさ。0.8 に落として軽くしていたのを 1.0 に戻したが、その
+      // 「等倍」は画面と 1 対 1 ではなく系が勧める大きさで、実測では足りて
+      // いなかった（画面 1078x2398 に対して層は 1078x2164）。足りない分は
+      // 系が引き伸ばすので、実写の隣でモデルだけ 1.1 倍に甘くなる。
+      // 画面と 1 対 1 になる倍率を聞いて、それを使う。聞けない端末では等倍のまま。
+      let fbScale = 1.0;
+      try {
+        const nat = XRWebGLLayer.getNativeFramebufferScaleFactor(session);
+        // 頭に付ける機械では 1 を大きく超えることがある。焼く面積は二乗で効くので、
+        // 電池と熱のほうが先に負ける。手に持つ端末で要る範囲に留める。
+        if (nat > 0) fbScale = Math.min(nat, 2);
+      } catch (e){ void e; }
+      renderer.xr.setFramebufferScaleFactor(fbScale);
       // AR は実寸。背丈 1.9 のまま置くと 1.9m の巨人になる。机に置く物として
       // 既定はここで決め、あとは指で。
       base = opt.arH / opt.bodyH;
@@ -380,7 +402,12 @@ export function createStage(opt){
       ? navigator.xr.isSessionSupported('immersive-ar').catch(() => false)
       : Promise.resolve(false);
     ask.then((ok) => {
-      if (ok){ startXR(); return; }
+      if (ok && !WANT_FLAT){ startXR(); return; }
+      if (ok){
+        flatWhy = '?flat が付いている（追跡を捨てて、実写を鮮明に撮るため）';
+        startFlat();
+        return;
+      }
       flatWhy = navigator.xr
         ? 'この端末の browser に immersive-ar が無い'
         : 'この browser に WebXR が無い';

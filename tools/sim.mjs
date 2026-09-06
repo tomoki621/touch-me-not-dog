@@ -113,7 +113,7 @@ execFileSync('./node_modules/@esbuild/win32-x64/esbuild.exe', [
   '--target=es2020', '--alias:three=./tools/glstub.mjs',
   // 別名は名前の頭で効くので、読み込み器の道まで巻き込まれる。実体へ戻しておく。
   '--alias:three/examples/jsm/loaders/GLTFLoader.js=./node_modules/three/examples/jsm/loaders/GLTFLoader.js',
-  '--define:__GLBV__=' + JSON.stringify(JSON.stringify('sim')),
+  '--define:__GLBV__=' + JSON.stringify('sim'),
   '--alias:fs=./src/empty.js', '--alias:util=./src/empty.js',
   '--alias:path=./src/empty.js', '--alias:crypto=./src/empty.js',
 ], { stdio: 'inherit' });

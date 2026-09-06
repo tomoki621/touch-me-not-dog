@@ -19,7 +19,7 @@ const esbuild = './node_modules/@esbuild/win32-x64/esbuild.exe';
 const bundleOf = (src, out) => execFileSync(esbuild, [
   src, '--bundle', '--format=iife', '--target=es2018',
   '--outfile=' + out, '--minify',
-  '--define:__GLBV__=' + JSON.stringify(JSON.stringify(glbHash)),
+  '--define:__GLBV__=' + JSON.stringify(glbHash),
   '--alias:fs=./src/empty.js', '--alias:util=./src/empty.js',
   '--alias:path=./src/empty.js', '--alias:crypto=./src/empty.js'
 ], { stdio: 'inherit' });
