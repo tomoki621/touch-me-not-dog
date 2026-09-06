@@ -78,6 +78,19 @@ const WANT_CAM = /(^|[?&])cam(=|&|$)/.test(location.search);
 // そちらが正しい既定。AR は残してあるので ?ar でいつでも戻せる。
 const WANT_AR = /(^|[?&])ar(=|&|$)/.test(location.search);
 
+// ---------------------------------------------------------------- 切り分けの栓
+// 【なぜ要るのか】実機で、三角形は描かれているのに姿が出ない状態になった。
+// 位置も倍率も箱も、画面なしの模擬で確かめた健全値とぴたり同じ。そこから先は
+// 端末の上でしか分からないので、一つずつ外せるようにする。推測で直すより速い。
+//
+//   ?probe    キャラの居る所へ、光を使わない目印の箱を置く。
+//             箱が出てキャラが出ない → 画布は出ている。模型か材質の話。
+//             箱も出ない             → 描いたものが画面へ届いていない。
+//   ?noshadow 影を焼くのをやめる（2048 の深度板を疑う）
+//   ?noaa     MSAA をやめる（alpha 付きの画布との相性を疑う）
+const flag = (n) => new RegExp('(^|[?&])' + n + '(=|&|$)').test(location.search);
+const WANT_PROBE = flag('probe'), NO_SHADOW = flag('noshadow'), NO_AA = flag('noaa');
+
 // opt:
 //   gl, cam, touch      canvas / video / 指の受け皿の要素
 //   ov                  dom-overlay に渡す入れ物
@@ -99,7 +112,7 @@ export function createStage(opt){
   // 「context の antialias なら 4」で決めるので、ここを立てると XR の層も
   // 4x で焼かれる（baseLayer に落ちる端末では XRWebGLLayer の antialias に渡る）。
   const renderer = new THREE.WebGLRenderer({
-    canvas: opt.gl, alpha: true, antialias: true, powerPreference: 'high-performance' });
+    canvas: opt.gl, alpha: true, antialias: !NO_AA, powerPreference: 'high-performance' });
   // 画素の刻み。1.5 → 2 と上げてきたが、いまの端末はたいてい 3 で、まだ 2/3 の
   // 解像度で描いていた。実写を 4K で開いておいて 3D だけ甘い、が残る理由がここ。
   // これが効くのは貼り付け表示だけ（AR の層の大きさは XR 側が決める）で、
@@ -109,7 +122,7 @@ export function createStage(opt){
   // この版に書いても新しい属性が生えるだけで誰も読まない。線形のまま画面へ行き、
   // 中間調が軒並み沈む。この版では encoding 側で指定するのが正しい。
   renderer.outputEncoding = THREE.sRGBEncoding;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = !NO_SHADOW;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
@@ -128,6 +141,17 @@ export function createStage(opt){
   stage.rotation.order = 'YXZ';   // 先に向き、あとから傾き。逆だと傾けが斜めに効く。
   stage.position.set(0, 0, -DIST);
   scene.add(stage);
+
+  // 目印の箱。光にも骨にも絵にも依らない一番単純なもの。これが出るかどうかで、
+  // 「画布が出ていない」と「模型が出ていない」を一発で分ける。
+  if (WANT_PROBE){
+    const probe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 1.2, 0.6),
+      new THREE.MeshBasicMaterial({ color: 0xff00ff }));
+    probe.position.y = 0.6;       // 足元から立ち上がる。キャラと同じ所を占める。
+    probe.frustumCulled = false;
+    stage.add(probe);
+  }
 
   // ---------------------------------------------------------------- 置く目印
   // ヒットテストが返す姿勢は面の法線が +Y。輪はそのままだと立ってしまうので、
@@ -528,7 +552,9 @@ export function createStage(opt){
     try { aa = renderer.getContext().getContextAttributes().antialias ? '有' : '無'; }
     catch (e){ void e; }
     return '版 ' + __GLBV__ + ' / 刻み ' + renderer.getPixelRatio() + ' / MSAA ' + aa +
-           ' / 倍率 ' + stage.scale.x.toFixed(3) + ' / 見え ' + (stage.visible ? '有' : '無');
+           ' / 影 ' + (renderer.shadowMap.enabled ? '有' : '無') +
+           ' / 倍率 ' + stage.scale.x.toFixed(3) + ' / 見え ' + (stage.visible ? '有' : '無') +
+           (WANT_PROBE ? ' / 目印 有' : '');
   }
 
   return {
