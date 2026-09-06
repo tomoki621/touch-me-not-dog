@@ -20,7 +20,13 @@
   #ov > *{pointer-events:auto}
   #flash{pointer-events:none}
   #cross{pointer-events:none}
-  #gl{position:fixed;inset:0;z-index:1}
+  /* 【canvas は inset:0 では伸びない】canvas は置換要素で、width が auto の
+     ままだと固有の大きさ（＝描画バッファの画素数）で組まれる。left/right を
+     0 にしても引き伸ばされない。刻みを 2.75 にした端末では画布が CSS 上
+     1078x2010 になり、窓 392x731 に対して 2.75 倍はみ出していた。見えていたのは
+     その左上の隅だけで、そこから外れた所に描かれたキャラは画面に出ない。
+     三角形は描かれ、位置も倍率も正しく、それでも映らないのはこれが理由だった。 */
+  #gl{position:fixed;inset:0;width:100%;height:100%;z-index:1}
   /* 指の受け皿。3Dより前、HUDより後ろ。 */
   #touch{position:fixed;inset:0;z-index:3;touch-action:none}
 

@@ -16,7 +16,13 @@
   /* 貼り付け表示のときの実写。AR のときは XR 側が描くので消す。 */
   #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
   body.xr #cam{display:none}
-  #gl{position:fixed;inset:0;z-index:1}
+  /* 【canvas は inset:0 では伸びない】canvas は置換要素で、width が auto の
+     ままだと固有の大きさ（＝描画バッファの画素数）で組まれる。left/right を
+     0 にしても引き伸ばされない。刻みを 2.75 にした端末では画布が CSS 上
+     1078x2010 になり、窓 392x731 に対して 2.75 倍はみ出していた。見えていたのは
+     その左上の隅だけで、そこから外れた所に描かれたキャラは画面に出ない。
+     三角形は描かれ、位置も倍率も正しく、それでも映らないのはこれが理由だった。 */
+  #gl{position:fixed;inset:0;width:100%;height:100%;z-index:1}
 
   /* dom-overlay の入れ物。素通しにして、必要な子だけが指を受ける。 */
   #ov{position:fixed;inset:0;z-index:2;pointer-events:none}
@@ -32,7 +38,7 @@
   /* 十字は「キャラがここに立つ」の印。足元の高さ（FLAT_FOOT）に合わせる。
      画面の真ん中に置いていたが、足元はそこではないので、指す先が違っていた。 */
   body.put #cross{opacity:0}
-  #cross i{position:absolute;left:50%;top:50%;background:#ffffff88;display:block}
+  #cross i{position:absolute;left:50%;top:72%;background:#ffffff88;display:block}
   #cross i:nth-child(1){width:1px;height:26px;transform:translate(-50%,-50%)}
   #cross i:nth-child(2){width:26px;height:1px;transform:translate(-50%,-50%)}
 
