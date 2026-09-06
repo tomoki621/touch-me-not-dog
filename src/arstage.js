@@ -35,7 +35,19 @@ import * as THREE from 'three';
 const DIST = 4.2;
 const PINCH_MIN = 10;     // これ未満は指がくっついているとみなす（px）
 const R_MAX = 1.14;       // 1フレームで許す倍率の変化。跳ねを根元で止める。
-const POS_MAX = 2.2;      // 貼り付け表示のとき、画面の外へ飛ばさない
+
+// 貼り付け表示の既定の収まり。
+//
+// 【ここが壊れていた】前は倍率 1、位置 (0,0,-DIST) で始めていた。stage の原点は
+// キャラの足元なので、**足が画面のちょうど真ん中に来て、体が上半分を丸ごと
+// 占め、頭が画面の外へ抜ける**。盾は横へはみ出して切れる。AR では置く場所を
+// 現実の面が決めるので、この既定が使われることはほとんど無く、気づかれずに
+// 残っていた。既定を貼り付け表示にした時点で、これが最初に目に入る絵になった。
+//
+// 数字ではなく割合で決める。視野の高さは DIST と fov だけで決まり、画面の
+// 大きさには依らないので、端末が変わってもこの収まりは変わらない。
+const FLAT_FILL = 0.38;   // 背丈が画面の高さの何割か
+const FLAT_FOOT = 0.72;   // 足元が画面の上から何割のところか（下の操作板を避ける）
 
 const _camP = new THREE.Vector3();
 
@@ -149,7 +161,28 @@ export function createStage(opt){
   // 倍率の幅。AR は実寸なので、机の置物から見上げる大きさまで要る。
   let sLo = 0.20, sHi = 1.8;
   const clampS = (v) => Math.min(base * sHi, Math.max(base * sLo, v));
-  const clampP = (v) => Math.min(POS_MAX, Math.max(-POS_MAX, v));
+
+  // DIST の距離で、画面いっぱいが何ワールド単位ぶんか。fov は縦なので、
+  // 高さは画面の大きさに依らず一定。横だけが縦横比で変わる。
+  const viewH = () => 2 * DIST * Math.tan(camera.fov * Math.PI / 360);
+  const viewW = () => viewH() * (innerWidth / innerHeight);
+
+  // 画面の外へ追い出さない。前は ±2.2 の決め打ちで、これは視野の高さ（3.9）の
+  // 半分より大きい。指を滑らせるとキャラを画面の外まで持って行けて、戻すには
+  // 「置き直す」しか無かった。足元が画面の中に留まるように、視野そのもので挟む。
+  const clampX = (v) => { const m = viewW() * 0.45; return Math.min(m, Math.max(-m, v)); };
+  const clampY = (v) => { const m = viewH() * 0.45; return Math.min(m, Math.max(-m, v)); };
+
+  // 貼り付け表示の既定の収まりへ戻す。倍率も位置もここで一度に決める。
+  function flatFrame(){
+    const h = viewH();
+    base = h * FLAT_FILL / (opt.bodyH || 1);
+    // 指で変えられる幅。既定を基準に、豆粒から画面いっぱいの手前まで。
+    sLo = 0.35; sHi = 2.2;
+    stage.scale.setScalar(base);
+    stage.rotation.set(0, 0, 0);
+    stage.position.set(0, (0.5 - FLAT_FOOT) * h, -DIST);
+  }
 
   // ---------------------------------------------------------------- 指
   // AR では大きさと向きだけ。置き場所は現実の面が決めるので、指では動かさない。
@@ -185,8 +218,8 @@ export function createStage(opt){
       // AR では置き場所を現実の面が持っている。指では動かさない。
       if (xr) return;
       const k = perPx();
-      stage.position.x = clampP(stage.position.x + dx * k);
-      stage.position.y = clampP(stage.position.y - dy * k);
+      stage.position.x = clampX(stage.position.x + dx * k);
+      stage.position.y = clampY(stage.position.y - dy * k);
     } else if (pts.size === 2 && twoOn){
       const d = dist2(), a = ang2(), cy = cen2();
       // 大きさ。1フレームぶんの比だけを掛ける。比に上限を置いてあるので、
@@ -259,13 +292,12 @@ export function createStage(opt){
     // 落ちてきたときの輪が画面に貼りついたまま、カメラについて回る。
     reticle.visible = false;
     hitOK = false;
-    stage.scale.setScalar(base);
-    stage.rotation.set(0, 0, 0);
     // AR では、置くまでキャラを出さない。置き場所も向きも決まっていないうちに
     // 出すと、実寸（25cm）のまま初期位置＝4.2m 先に立って、豆粒が明後日の方向に
     // 浮かぶ。エクゾディアが召喚まで何も出さないのと同じ考え。
     stage.visible = !xr;
-    if (!xr) stage.position.set(0, 0, -DIST);
+    if (xr){ stage.scale.setScalar(base); stage.rotation.set(0, 0, 0); }
+    else flatFrame();   // 倍率・向き・位置をまとめて既定へ
   }
 
   // 面を選べていないうちは置かせない。宙に立たせると、その一回で台無しになる。
@@ -354,8 +386,6 @@ export function createStage(opt){
     stage.visible = true;   // 貼り付け表示では、置く前から見えているのが正しい
     document.body.classList.remove('xr');
     renderer.xr.enabled = false;
-    base = 1;
-    stage.scale.setScalar(1);
     Promise.resolve(s && s.end()).catch(() => {}).then(() => {
       if (tip) tip.textContent = 'この端末では AR を使えないので、画面に重ねて表示します';
       startFlat();
@@ -366,6 +396,9 @@ export function createStage(opt){
   // こちらは映像要素があるので、手の検出も使える。
   function startFlat(){
     tapme.textContent = 'カメラを起動しています…';
+    // 画が出る前に収まりを決めておく。カメラの許可を待つあいだに1枚でも
+    // 描かれると、そこだけ壊れた大きさで映る。
+    flatFrame();
     // 出せる限りを頼む。1920x1080 で頭打ちにしていたが、実測で 2160x3840 まで
     // 出る端末があった（cam.html で確認）。ideal なので、届かない端末は近い
     // ところへ勝手に落ちる。ここが AR のパススルーとの唯一の差になる。
